@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+    <ItemGroup>
+      <Compile Remove="Handlers\**" />
+      <EmbeddedResource Remove="Handlers\**" />
+      <None Remove="Handlers\**" />
+    </ItemGroup>
+    <ItemGroup>
+	    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+		    <_Parameter1>EventDbLite.Tests</_Parameter1>
+	    </AssemblyAttribute>
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+    </ItemGroup>
+    <ItemGroup>
+      <ProjectReference Include="..\EventDbLite.Handlers\EventDbLite.Handlers.csproj" />
+      <ProjectReference Include="..\EventDbLite.Reactions.Abstractions\EventDbLite.Reactions.Abstractions.csproj" />
+      <ProjectReference Include="..\EventDbLite.Serialization\EventDbLite.Serialization.csproj" />
+    </ItemGroup>
+</Project>
