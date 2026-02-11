@@ -14,6 +14,5 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\EventDbLite\EventDbLite.csproj" />
-	  <ProjectReference Include="..\NaeTime.SQLite\NaeTime.SQLite.csproj" />
 	</ItemGroup>
 </Project>

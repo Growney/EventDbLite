@@ -48,7 +48,7 @@ public class KurrentDbEventStoreLite : IEventStoreLite
         return _client.AppendToStreamAsync(streamName, kurrentDbState, kurrentDbEvents);
     }
 
-    public async IAsyncEnumerable<StreamEvent> ReadEvents(StreamDirection direction, Abstractions.StreamPosition fromPosition)
+    public async IAsyncEnumerable<StreamEvent> ReadAllEvents(StreamDirection direction, Abstractions.StreamPosition fromPosition)
     {
         Direction kurrentDbDirection = direction == StreamDirection.Forward ? Direction.Forwards : Direction.Backwards;
 

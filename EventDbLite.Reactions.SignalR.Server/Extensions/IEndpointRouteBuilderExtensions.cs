@@ -17,7 +17,7 @@ public static class IEndpointRouteBuilderExtensions
 
             List<StreamEvent> events = new();
 
-            await foreach (var streamEvent in eventStore.ReadEvents(EventDbLite.Streams.StreamDirection.Forward, streamPosition))
+            await foreach (var streamEvent in eventStore.ReadAllEvents(EventDbLite.Streams.StreamDirection.Forward, streamPosition))
             {
                 events.Add(streamEvent);
             }

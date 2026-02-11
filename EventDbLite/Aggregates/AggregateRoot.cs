@@ -20,7 +20,8 @@ public abstract class AggregateRoot<T> : AggregateRoot
 }
 public abstract class AggregateRoot
 {
-    public long Version { get; private set; }
+    public long Version { get; private set; } = StreamPosition.NoStream;
+    public long CommitedVersion { get; private set; } = StreamPosition.NoStream;
 
     private IHandlerProvider? _handlerProvider;
     private IEventSerializer? _eventSerializer;
@@ -67,6 +68,7 @@ public abstract class AggregateRoot
         EventMetadata metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
 
         Version = streamEvent.StreamOrdinal;
+        CommitedVersion = streamEvent.StreamOrdinal;
         Handler? handler = _handlerProvider.GetHandlerMethod(GetType(), metadata.Identifier);
         if (handler is null)
         {

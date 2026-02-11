@@ -5,7 +5,7 @@ namespace EventDbLite.Abstractions;
 public interface IEventStoreLite
 {
     IAsyncEnumerable<StreamEvent> ReadStreamEvents(string streamName, StreamDirection direction, StreamPosition fromPosition);
-    IAsyncEnumerable<StreamEvent> ReadEvents(StreamDirection direction, StreamPosition fromPosition);
+    IAsyncEnumerable<StreamEvent> ReadAllEvents(StreamDirection direction, StreamPosition fromPosition);
 
     Task AppendToStreamAsync(string streamName, IEnumerable<EventData> data, StreamPosition expectedState);
 

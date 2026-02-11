@@ -5,10 +5,10 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace EventDbLite.Projections;
 
-public class ProjectionProvider(IServiceProvider serviceProvider, IEventStreamConnection connection, IEventSerializer eventSerializer, IHandlerProvider aggregateHandlerProvider) : IProjectionProvider
+public class ProjectionProvider(IServiceProvider serviceProvider, IEventStoreLite connection, IEventSerializer eventSerializer, IHandlerProvider aggregateHandlerProvider) : IProjectionProvider
 {
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
-    private readonly IEventStreamConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+    private readonly IEventStoreLite _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     private readonly IEventSerializer _eventSerializer = eventSerializer ?? throw new ArgumentNullException(nameof(eventSerializer));
     private readonly IHandlerProvider _handlerProvider = aggregateHandlerProvider ?? throw new ArgumentNullException(nameof(aggregateHandlerProvider));
 
@@ -17,7 +17,7 @@ public class ProjectionProvider(IServiceProvider serviceProvider, IEventStreamCo
         T projection = ActivatorUtilities.GetServiceOrCreateInstance<T>(_serviceProvider);
 
         IAsyncEnumerable<StreamEvent> streamEvents = (streamName is null)
-            ? _connection.ReadAllStreamEvents(StreamDirection.Forward, StreamPosition.Beginning)
+            ? _connection.ReadAllEvents(StreamDirection.Forward, StreamPosition.Beginning)
             : _connection.ReadStreamEvents(streamName, StreamDirection.Forward, StreamPosition.Beginning);
 
         await foreach (StreamEvent streamEvent in streamEvents)

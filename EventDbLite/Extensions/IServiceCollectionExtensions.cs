@@ -8,31 +8,42 @@ using EventDbLite.Reactions;
 using EventDbLite.Reactions.Abstractions;
 using EventDbLite.Serialization;
 using EventDbLite.Streams;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
 public static class IServiceCollectionExtensions
 {
-
+    private const string _defaultstorageKey = "default";
     public static IServiceCollection AddEventDbLite(this IServiceCollection services)
     {
         services.AddHostedService<ConstantReactionService>();
 
-        services.AddSingleton<IEventStoreLite, EventStoreLite>();
-        services.AddSingleton<ILiveProjectionRepository, LiveProjectionRepository>();
+        services.TryAddSingleton<IEventStoreLite, EventStoreLite>();
+        services.TryAddSingleton<ILiveProjectionRepository, LiveProjectionRepository>();
 
-        services.AddSingleton<IEventSerializer, JsonEventSerializer>();
-        services.AddSingleton<IHandlerProvider, HandlerProvider>();
-        services.AddSingleton<IAsyncHandlerProvider, AsyncHandlerProvider>();
+        services.TryAddSingleton<IEventSerializer, JsonEventSerializer>();
+        services.TryAddSingleton<IHandlerProvider, HandlerProvider>();
+        services.TryAddSingleton<IAsyncHandlerProvider, AsyncHandlerProvider>();
 
-        services.AddTransient<IAggregateRepository, AggregateRepository>();
-        services.AddTransient<IProjectionProvider, ProjectionProvider>();
+        services.TryAddTransient<IAggregateRepository, AggregateRepository>();
+        services.TryAddTransient<IProjectionProvider, ProjectionProvider>();
 
-        services.AddTransient<IStreamEventWriter, StreamEventWriter>();
-        services.AddTransient<IReactionProviderFactory, ReactionProviderFactory>();
-        services.AddTransient<IReactionClassFactory, ReactionClassFactory>();
+        services.TryAddTransient<IStreamEventWriter, StreamEventWriter>();
+        services.TryAddTransient<IReactionProviderFactory, ReactionProviderFactory>();
+        services.TryAddTransient<IReactionClassFactory, ReactionClassFactory>();
+        services.TryAddKeyedTransient<IConstantReactionPositionStorage, EventDbLiteConstantReactionPositionStorage>(_defaultstorageKey);
 
         services.AddHostedService<LiveProjectionService>();
+        return services;
+    }
+    public static IServiceCollection AddConstantReactionPositionStorage<T>(this IServiceCollection services)
+        where T : class, IConstantReactionPositionStorage
+        => AddConstantReactionPositionStorage<T>(services, _defaultstorageKey);
+    public static IServiceCollection AddConstantReactionPositionStorage<T>(this IServiceCollection services, string storageKey)
+        where T : class, IConstantReactionPositionStorage
+    {
+        services.AddKeyedTransient<IConstantReactionPositionStorage, T>(storageKey);
         return services;
     }
 
@@ -45,7 +56,7 @@ public static class IServiceCollectionExtensions
         where TService : class
         where TImplementation : class, TService
     {
-        services.AddSingleton<TService, TImplementation>();
+        services.TryAddSingleton<TService, TImplementation>();
         services.AddLiveProjection(typeof(TService), streamName);
 
         return services;
@@ -53,14 +64,14 @@ public static class IServiceCollectionExtensions
     public static IServiceCollection AddSingletonLiveProjection<TImplementation>(this IServiceCollection services, string? streamName = null)
         where TImplementation : class
     {
-        services.AddScoped<TImplementation>();
+        services.TryAddSingleton<TImplementation>();
         services.AddLiveProjection(typeof(TImplementation), streamName);
         return services;
     }
     public static IServiceCollection AddScopedLiveProjection<TImplementation>(this IServiceCollection services, string? streamName = null)
         where TImplementation : class
     {
-        services.AddScoped<TImplementation>();
+        services.TryAddScoped<TImplementation>();
         services.AddLiveProjection(typeof(TImplementation), streamName);
         return services;
     }
@@ -68,14 +79,14 @@ public static class IServiceCollectionExtensions
         where TService : class
         where TImplementation : class, TService
     {
-        services.AddScoped<TService, TImplementation>();
+        services.TryAddScoped<TService, TImplementation>();
         services.AddLiveProjection(typeof(TService), streamName);
         return services;
     }
     public static IServiceCollection AddTransientLiveProjection<TImplementation>(this IServiceCollection services, string? streamName = null)
          where TImplementation : class
     {
-        services.AddTransient<TImplementation>();
+        services.TryAddTransient<TImplementation>();
         services.AddLiveProjection(typeof(TImplementation), streamName);
         return services;
     }
@@ -83,12 +94,12 @@ public static class IServiceCollectionExtensions
         where TService : class
         where TImplementation : class, TService
     {
-        services.AddTransient<TService, TImplementation>();
+        services.TryAddTransient<TService, TImplementation>();
         services.AddLiveProjection(typeof(TService), streamName);
         return services;
     }
 
-    public static IServiceCollection AddConstantReaction<T>(this IServiceCollection services, Func<IServiceProvider, T, Task> reaction, string? reactionKey = null)
+    public static IServiceCollection AddConstantReaction<T>(this IServiceCollection services, Func<IServiceProvider, T, Task> reaction, string storageKey, string? reactionKey = null)
     {
         services.AddSingleton(new ConstantReactionSource([new ConstantReaction((serviceProvider, obj) =>
         {
@@ -97,42 +108,41 @@ public static class IServiceCollectionExtensions
                 return reaction(serviceProvider, t);
             }
             return Task.CompletedTask;
-        }, typeof(T))], reactionKey));
+        }, typeof(T))], storageKey, reactionKey));
 
         return services;
     }
-    public static IServiceCollection AddConstantReactionClass<T>(this IServiceCollection services)
+    public static IServiceCollection AddConstantReactionClass<T>(this IServiceCollection services) => AddConstantReactionClass<T>(services, _defaultstorageKey);
+    public static IServiceCollection AddConstantReactionClass<T>(this IServiceCollection services, string storageKey) => AddConstantReactionClass<T>(services, storageKey, typeof(T).Name);
+    public static IServiceCollection AddConstantReactionClass<T>(this IServiceCollection services, string storageKey, string? reactionKey)
     {
         services.AddSingleton(serviceProvider =>
         {
             List<ConstantReaction> reactions = GetReactions<T>(serviceProvider);
-            return new ConstantReactionSource(reactions, typeof(T).Name);
+            return new ConstantReactionSource(reactions, storageKey: storageKey, reactionKey: reactionKey);
         });
         return services;
     }
     public static IServiceCollection AddConstantReactionService<TService, TImplementation>(this IServiceCollection services)
         where TService : class
         where TImplementation : class, TService
-    {
-        services.AddSingleton<TService, TImplementation>();
-        services.AddConstantReactionClass<TService>();
-        return services;
-    }
-    public static IServiceCollection AddConstantReactionClass<T>(this IServiceCollection services, string? reactionKey)
-    {
-        services.AddSingleton(serviceProvider =>
-        {
-            List<ConstantReaction> reactions = GetReactions<T>(serviceProvider);
-            return new ConstantReactionSource(reactions, reactionKey);
-        });
-        return services;
-    }
-    public static IServiceCollection AddConstantReactionService<TService, TImplementation>(this IServiceCollection services, string? reactionKey)
+            => AddConstantReactionService<TService, TImplementation>(services, _defaultstorageKey);
+
+    public static IServiceCollection AddConstantReactionService<TService, TImplementation>(this IServiceCollection services, string storageKey)
         where TService : class
         where TImplementation : class, TService
     {
         services.AddSingleton<TService, TImplementation>();
-        services.AddConstantReactionClass<TService>(reactionKey);
+        services.AddConstantReactionClass<TService>(storageKey);
+        return services;
+    }
+
+    public static IServiceCollection AddConstantReactionService<TService, TImplementation>(this IServiceCollection services, string storageKey, string? reactionKey)
+        where TService : class
+        where TImplementation : class, TService
+    {
+        services.TryAddSingleton<TService, TImplementation>();
+        services.AddConstantReactionClass<TService>(storageKey, reactionKey);
         return services;
     }
 

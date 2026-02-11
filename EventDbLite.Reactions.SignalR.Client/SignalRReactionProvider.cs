@@ -1,5 +1,5 @@
 ﻿using EventDbLite.Abstractions;
-using NaeTime.Collections;
+using EventDbLite.Collections;
 using System.Net.Http.Json;
 
 namespace EventDbLite.Reactions.SignalR.Client;

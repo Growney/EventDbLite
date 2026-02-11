@@ -1,5 +1,7 @@
 ﻿using EventDbLite.Abstractions;
 using System.Reflection;
+using System.Text;
+using System.Text.Json.Nodes;
 
 namespace EventDbLite.Serialization;
 
@@ -17,7 +19,7 @@ public class JsonEventSerializer : IEventSerializer
         };
     }
     public object? DeserializeEvent(ReadOnlySpan<byte> payload, Type targetType) => System.Text.Json.JsonSerializer.Deserialize(payload, targetType);
-    public EventMetadata DeserializeMetadata(ReadOnlySpan<byte> metadata) => System.Text.Json.JsonSerializer.Deserialize<EventMetadata>(metadata) ?? throw new InvalidOperationException("Failed to deserialize event metadata.");
+    public EventMetadata? DeserializeMetadata(ReadOnlySpan<byte> metadata) => System.Text.Json.JsonSerializer.Deserialize<EventMetadata>(metadata);
     public string GetIdentifier(Type eventType)
     {
         EventAttribute? eventAttribute = eventType.GetCustomAttribute<EventAttribute>();

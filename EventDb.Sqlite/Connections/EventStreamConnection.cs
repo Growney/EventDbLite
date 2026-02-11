@@ -55,7 +55,7 @@ internal class EventStreamConnection(ISqliteConnectionFactory connectionFactory)
                     WHERE StreamName = $streamName;";
                 currentStreamVersionCommand.Parameters.AddWithValue("$streamName", streamName);
                 currentStreamVersion = (long)currentStreamVersionCommand.ExecuteScalar()!;
-                if (!expectedState.IsValidUpdateVersion(currentStreamVersion + data.Count()))
+                if (!expectedState.IsValidUpdateVersion(currentStreamVersion))
                 {
                     throw new ConcurrencyException(expectedState.Version, currentStreamVersion);
                 }

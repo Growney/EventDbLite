@@ -13,7 +13,6 @@ using EventDbLite.Serialization;
 using EventDbLite.Streams;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using NaeTime.Persistence.SQLite;
 
 namespace Microsoft.Extensions.DependencyInjection;
 

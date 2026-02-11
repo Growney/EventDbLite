@@ -76,7 +76,7 @@ public class EventStoreLite(IServiceProvider serviceProvider) : IEventStoreLite
             yield return streamEvent;
         }
     }
-    public async IAsyncEnumerable<StreamEvent> ReadEvents(StreamDirection direction, StreamPosition fromPosition)
+    public async IAsyncEnumerable<StreamEvent> ReadAllEvents(StreamDirection direction, StreamPosition fromPosition)
     {
         using IServiceScope scope = _serviceProvider.CreateScope();
 

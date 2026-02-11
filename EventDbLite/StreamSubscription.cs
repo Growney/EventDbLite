@@ -45,7 +45,7 @@ internal class StreamSubscription : IStreamSubscription
         _logger?.LogInformation("Starting catch-up from position {Position} on stream {StreamName}", _currentPosition, _streamName ?? "all streams");
         IAsyncEnumerable<StreamEvent> eventStream = _streamName is not null
             ? _eventStore.ReadStreamEvents(_streamName, StreamDirection.Forward, _currentPosition)
-            : _eventStore.ReadEvents(StreamDirection.Forward, _currentPosition);
+            : _eventStore.ReadAllEvents(StreamDirection.Forward, _currentPosition);
         await foreach (StreamEvent streamEvent in eventStream.WithCancellation(token))
         {
             yield return new SubscriptionEvent(false, streamEvent);
@@ -59,7 +59,7 @@ internal class StreamSubscription : IStreamSubscription
     {
         IAsyncEnumerable<StreamEvent> eventStream = _streamName is not null
             ? _eventStore.ReadStreamEvents(_streamName, StreamDirection.Forward, _currentPosition)
-            : _eventStore.ReadEvents(StreamDirection.Forward, _currentPosition);
+            : _eventStore.ReadAllEvents(StreamDirection.Forward, _currentPosition);
 
         await foreach (StreamEvent streamEvent in eventStream)
         {
