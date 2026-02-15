@@ -65,7 +65,12 @@ public abstract class AggregateRoot
             throw new InvalidOperationException("AggregateRoot is not initialized. Ensure dependencies are set before raising events.");
         }
 
-        EventMetadata metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
+        EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
+
+        if (metadata is null)
+        {
+            throw new InvalidOperationException($"Failed to deserialize event metadata for event with stream ordinal '{streamEvent.StreamOrdinal}'");
+        }
 
         Version = streamEvent.StreamOrdinal;
         CommitedVersion = streamEvent.StreamOrdinal;

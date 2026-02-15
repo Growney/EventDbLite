@@ -12,7 +12,7 @@ public class ProjectionProvider(IServiceProvider serviceProvider, IEventStoreLit
     private readonly IEventSerializer _eventSerializer = eventSerializer ?? throw new ArgumentNullException(nameof(eventSerializer));
     private readonly IHandlerProvider _handlerProvider = aggregateHandlerProvider ?? throw new ArgumentNullException(nameof(aggregateHandlerProvider));
 
-    public async Task<T> Load<T>(string? streamName = null)
+    public async Task<T> Load<T>(string? streamName, StreamPosition until)
     {
         T projection = ActivatorUtilities.GetServiceOrCreateInstance<T>(_serviceProvider);
 
@@ -22,6 +22,35 @@ public class ProjectionProvider(IServiceProvider serviceProvider, IEventStoreLit
 
         await foreach (StreamEvent streamEvent in streamEvents)
         {
+
+            if (until != StreamPosition.End)
+            {
+                if(streamName != null)
+                {
+                    if(until.IsGlobal)
+                    {
+                        if (streamEvent.GlobalOrdinal > until.Version)
+                        {
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        if (streamEvent.StreamOrdinal > until.Version)
+                        {
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    if(streamEvent.GlobalOrdinal > until.Version)
+                    {
+                        break;
+                    }
+                }
+            }
+
             RaiseProjectionEvent(projection, streamEvent);
         }
 
@@ -35,7 +64,12 @@ public class ProjectionProvider(IServiceProvider serviceProvider, IEventStoreLit
             return;
         }
 
-        EventMetadata metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
+        EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
+
+        if(metadata is null)
+        {
+            return;
+        }
 
         Handlers.Handler? handler = _handlerProvider.GetHandlerMethod(typeof(T), metadata.Identifier);
         if (handler is null)
