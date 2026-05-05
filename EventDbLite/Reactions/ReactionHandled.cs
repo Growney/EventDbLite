@@ -1,5 +1,6 @@
 ﻿namespace EventDbLite.Reactions;
 public class ReactionHandled
 {
-    public long GlobalOrdinal { get; set; }
+    public ulong CommitPosition { get; set; }
+    public ulong PreparePosition { get; set; }
 }

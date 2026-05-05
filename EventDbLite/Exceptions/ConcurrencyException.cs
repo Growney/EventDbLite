@@ -1,9 +1,11 @@
-﻿namespace EventDbLite.Exceptions;
+﻿using EventDbLite.Abstractions;
 
-public class ConcurrencyException(long expectedVersion, long actualVersion) : Exception($"Concurrency conflict: expected version {expectedVersion}, but actual version is {actualVersion}.")
+namespace EventDbLite.Exceptions;
+
+public class ConcurrencyException(StreamState expectedVersion, StreamPosition actualVersion) : Exception($"Concurrency conflict: expected version {expectedVersion}, but actual version is {actualVersion}.")
 {
-    public long ExpectedVersion { get; } = expectedVersion;
-    public long ActualVersion { get; } = actualVersion;
+    public StreamState ExpectedVersion { get; } = expectedVersion;
+    public StreamPosition ActualVersion { get; } = actualVersion;
 
     public static async Task Retry(Func<Task> action, int maxRetries = int.MaxValue, int delayMilliseconds = 2, float delayScale = 1)
     {

@@ -12,42 +12,43 @@ public class ProjectionProvider(IServiceProvider serviceProvider, IEventStoreLit
     private readonly IEventSerializer _eventSerializer = eventSerializer ?? throw new ArgumentNullException(nameof(eventSerializer));
     private readonly IHandlerProvider _handlerProvider = aggregateHandlerProvider ?? throw new ArgumentNullException(nameof(aggregateHandlerProvider));
 
-    public async Task<T> Load<T>(string? streamName, StreamPosition until)
+    public async Task<T> Load<T>(Position until)
     {
         T projection = ActivatorUtilities.GetServiceOrCreateInstance<T>(_serviceProvider);
 
-        IAsyncEnumerable<StreamEvent> streamEvents = (streamName is null)
-            ? _connection.ReadAllEvents(StreamDirection.Forward, StreamPosition.Beginning)
-            : _connection.ReadStreamEvents(streamName, StreamDirection.Forward, StreamPosition.Beginning);
+        IAsyncEnumerable<StreamEvent> streamEvents = _connection.ReadAllEvents(StreamDirection.Forward, Position.Start);
+
+        await foreach (StreamEvent streamEvent in streamEvents)
+        {
+
+            if (until != Position.End)
+            {
+                if (streamEvent.GlobalOrdinal.IsAfter(until))
+                {
+                    break;
+                }
+            }
+
+            RaiseProjectionEvent(projection, streamEvent);
+        }
+
+        return projection;
+    }
+    public async Task<T> Load<T>(string streamName, StreamPosition until)
+    {
+        T projection = ActivatorUtilities.GetServiceOrCreateInstance<T>(_serviceProvider);
+
+        IAsyncEnumerable<StreamEvent> streamEvents = _connection.ReadStreamEvents(streamName, StreamDirection.Forward, StreamPosition.Start);
+      
 
         await foreach (StreamEvent streamEvent in streamEvents)
         {
 
             if (until != StreamPosition.End)
             {
-                if(streamName != null)
+                if (streamEvent.StreamOrdinal.IsAfter(until))
                 {
-                    if(until.IsGlobal)
-                    {
-                        if (streamEvent.GlobalOrdinal > until.Version)
-                        {
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        if (streamEvent.StreamOrdinal > until.Version)
-                        {
-                            break;
-                        }
-                    }
-                }
-                else
-                {
-                    if(streamEvent.GlobalOrdinal > until.Version)
-                    {
-                        break;
-                    }
+                    break;
                 }
             }
 

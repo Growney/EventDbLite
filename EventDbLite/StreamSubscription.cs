@@ -13,7 +13,8 @@ internal class StreamSubscription : IStreamSubscription
     private readonly ConcurrentQueue<StreamEvent> _liveQueue = new();
     private readonly IEventStoreLite _eventStore;
     private readonly string? _streamName;
-    private StreamPosition _currentPosition;
+    private Position? _currentPosition;
+    private StreamPosition? _streamPosition;
 
     private readonly Action<StreamSubscription> _onDispose;
     private readonly SemaphoreSlim _signal = new(0);
@@ -23,10 +24,16 @@ internal class StreamSubscription : IStreamSubscription
         _logger = logger;
         _eventStore = eventStore ?? throw new ArgumentNullException(nameof(eventStore));
         _streamName = streamName;
+        _streamPosition = initialPosition;
+        _onDispose = onDispose ?? throw new ArgumentNullException(nameof(onDispose));
+    }
+    public StreamSubscription(ILogger<StreamSubscription>? logger, IEventStoreLite eventStore, Position initialPosition, Action<StreamSubscription> onDispose)
+    {
+        _logger = logger;
+        _eventStore = eventStore ?? throw new ArgumentNullException(nameof(eventStore));
         _currentPosition = initialPosition;
         _onDispose = onDispose ?? throw new ArgumentNullException(nameof(onDispose));
     }
-
     public void AddLiveEvent(StreamEvent streamEvent)
     {
         _liveQueue.Enqueue(streamEvent);
@@ -44,8 +51,8 @@ internal class StreamSubscription : IStreamSubscription
         Stopwatch stopwatch = Stopwatch.StartNew();
         _logger?.LogInformation("Starting catch-up from position {Position} on stream {StreamName}", _currentPosition, _streamName ?? "all streams");
         IAsyncEnumerable<StreamEvent> eventStream = _streamName is not null
-            ? _eventStore.ReadStreamEvents(_streamName, StreamDirection.Forward, _currentPosition)
-            : _eventStore.ReadAllEvents(StreamDirection.Forward, _currentPosition);
+            ? _eventStore.ReadStreamEvents(_streamName, StreamDirection.Forward, _streamPosition ?? StreamPosition.Start)
+            : _eventStore.ReadAllEvents(StreamDirection.Forward, _currentPosition ?? Position.Start);
         await foreach (StreamEvent streamEvent in eventStream.WithCancellation(token))
         {
             yield return new SubscriptionEvent(false, streamEvent);
@@ -58,8 +65,8 @@ internal class StreamSubscription : IStreamSubscription
     public async IAsyncEnumerable<SubscriptionEvent> StreamEvents([EnumeratorCancellation] CancellationToken token)
     {
         IAsyncEnumerable<StreamEvent> eventStream = _streamName is not null
-            ? _eventStore.ReadStreamEvents(_streamName, StreamDirection.Forward, _currentPosition)
-            : _eventStore.ReadAllEvents(StreamDirection.Forward, _currentPosition);
+            ? _eventStore.ReadStreamEvents(_streamName, StreamDirection.Forward, _streamPosition ?? StreamPosition.Start)
+            : _eventStore.ReadAllEvents(StreamDirection.Forward, _currentPosition ?? Position.Start);
 
         await foreach (StreamEvent streamEvent in eventStream)
         {

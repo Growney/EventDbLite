@@ -13,7 +13,7 @@ public class EventStoreLite(IServiceProvider serviceProvider) : IEventStoreLite
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, StreamSubscription>> _streamSubscriptions = new();
     private readonly ConcurrentDictionary<Guid, StreamSubscription> _allStreamSubscriptions = new();
 
-    public async Task AppendToStreamAsync(string streamName, IEnumerable<EventData> data, StreamPosition expectedState)
+    public async Task AppendToStreamAsync(string streamName, IEnumerable<EventData> data, StreamState expectedState)
     {
         if (string.IsNullOrEmpty(streamName))
         {
@@ -27,21 +27,6 @@ public class EventStoreLite(IServiceProvider serviceProvider) : IEventStoreLite
         IEnumerable<StreamEvent> storedEvents = await connection.AppendToStreamAsync(streamName, data, expectedState).ConfigureAwait(false);
 
         DispatchEvents(streamName, storedEvents);
-    }
-    public async Task AppendToStreamAsync(string streamName, EventData data, StreamPosition expectedState)
-    {
-        if (string.IsNullOrEmpty(streamName))
-        {
-            throw new ArgumentException("Stream name cannot be null or empty.", nameof(streamName));
-        }
-
-        using IServiceScope scope = _serviceProvider.CreateScope();
-
-        IEventStreamConnection connection = scope.ServiceProvider.GetRequiredService<IEventStreamConnection>();
-
-        StreamEvent storedEvent = await connection.AppendToStreamAsync(streamName, data, expectedState);
-
-        DispatchEvents(streamName, Enumerable.Repeat(storedEvent, 1));
     }
 
     private void DispatchEvents(string streamName, IEnumerable<StreamEvent> events)
@@ -76,7 +61,7 @@ public class EventStoreLite(IServiceProvider serviceProvider) : IEventStoreLite
             yield return streamEvent;
         }
     }
-    public async IAsyncEnumerable<StreamEvent> ReadAllEvents(StreamDirection direction, StreamPosition fromPosition)
+    public async IAsyncEnumerable<StreamEvent> ReadAllEvents(StreamDirection direction, Position fromPosition)
     {
         using IServiceScope scope = _serviceProvider.CreateScope();
 
@@ -88,9 +73,9 @@ public class EventStoreLite(IServiceProvider serviceProvider) : IEventStoreLite
         }
     }
 
-    public IStreamSubscription SubscribeToAllStreams(StreamPosition position)
+    public IStreamSubscription SubscribeToAllStreams(Position position)
     {
-        return CreateSubscription(null, position);
+        return CreateSubscription(position);
     }
     public IStreamSubscription SubscribeToStream(string streamName, StreamPosition position)
     {
@@ -101,22 +86,36 @@ public class EventStoreLite(IServiceProvider serviceProvider) : IEventStoreLite
         return CreateSubscription(streamName, position);
     }
 
-    private IStreamSubscription CreateSubscription(string? streamName, StreamPosition initialPosition)
+    private IStreamSubscription CreateSubscription(string streamName, StreamPosition initialPosition)
+    {
+        Guid subscriptionId = Guid.NewGuid();
+        void onDispose(StreamSubscription subscription)
+        {
+            if (_streamSubscriptions.TryGetValue(streamName, out var streamSubscriptions))
+            {
+                streamSubscriptions.TryRemove(subscriptionId, out _);
+            }
+        }
+        ILogger<StreamSubscription>? logger = _serviceProvider.GetService<ILoggerFactory>()?.CreateLogger<StreamSubscription>();
+        StreamSubscription subscription = new(logger, this, streamName, initialPosition, onDispose);
+        _streamSubscriptions.GetOrAdd(streamName, _ => new ConcurrentDictionary<Guid, StreamSubscription>()).TryAdd(subscriptionId, subscription);
+
+        return subscription;
+    }
+
+    private IStreamSubscription CreateSubscription(Position initialPosition)
     {
         Guid subscriptionId = Guid.NewGuid();
 
-        ConcurrentDictionary<Guid, StreamSubscription> targetDictionary = streamName == null
-            ? _allStreamSubscriptions : _streamSubscriptions.GetOrAdd(streamName, _ => new ConcurrentDictionary<Guid, StreamSubscription>());
-
         void onDispose(StreamSubscription subscription)
         {
-            targetDictionary.TryRemove(subscriptionId, out _);
+            _allStreamSubscriptions.TryRemove(subscriptionId, out _);
         }
 
         ILogger<StreamSubscription>? logger = _serviceProvider.GetService<ILoggerFactory>()?.CreateLogger<StreamSubscription>();
 
-        StreamSubscription subscription = new(logger, this, streamName, initialPosition, onDispose);
-        targetDictionary.TryAdd(subscriptionId, subscription);
+        StreamSubscription subscription = new(logger, this, initialPosition, onDispose);
+        _allStreamSubscriptions.TryAdd(subscriptionId, subscription);
         return subscription;
     }
 }

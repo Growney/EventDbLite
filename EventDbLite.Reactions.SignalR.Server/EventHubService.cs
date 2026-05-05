@@ -23,7 +23,7 @@ public class EventHubService : BackgroundService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    private async Task EnsureRequirementsAsync(long globalVersion, CancellationToken cancellationToken)
+    private async Task EnsureRequirementsAsync(Position globalVersion, CancellationToken cancellationToken)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
         List<Task> waitTasks = new();
@@ -46,7 +46,7 @@ public class EventHubService : BackgroundService
 
         IEventStoreLite store = scope.ServiceProvider.GetRequiredService<IEventStoreLite>();
 
-        IStreamSubscription subscription = store.SubscribeToAllStreams(StreamPosition.End);
+        IStreamSubscription subscription = store.SubscribeToAllStreams(Position.End);
 
         IEventSerializer serializer = scope.ServiceProvider.GetRequiredService<IEventSerializer>();
 

@@ -7,7 +7,7 @@ namespace EventDbLite.Reactions.Abstractions;
 
 public interface IConstantReactionPositionStorage
 {
-    public Task<StreamPosition?> GetPositionAsync(string reactionKey);
-    public Task SetPositionAsync(string reactionKey, long globalPosition);
+    public Task<Position?> GetPositionAsync(string reactionKey);
+    public Task SetPositionAsync(string reactionKey, Position position);
 
 }

@@ -7,5 +7,5 @@ using System.Threading.Tasks;
 namespace EventDbLite.Abstractions;
 public interface ILiveProjectionManager
 {
-    public Task WaitForVersion(long globalPosition, CancellationToken cancellationToken);
+    public Task WaitForVersion(Position globalPosition, CancellationToken cancellationToken);
 }

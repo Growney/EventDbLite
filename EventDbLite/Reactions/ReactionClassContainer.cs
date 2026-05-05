@@ -44,7 +44,7 @@ public class ReactionClassContainer<T> : IReactionClassContainer<T>
         return result ?? Enumerable.Empty<Type>();
     }
 
-    private Task WaitForDependencies(IEnumerable<Type> dependencies, StreamPosition position)
+    private Task WaitForDependencies(IEnumerable<Type> dependencies, Position position)
     {
         if (dependencies == null || !dependencies.Any())
         {
@@ -61,7 +61,7 @@ public class ReactionClassContainer<T> : IReactionClassContainer<T>
                 continue;
             }
 
-            waitTasks.Add(manager.WaitForVersion(position.Version, _cts.Token));
+            waitTasks.Add(manager.WaitForVersion(position, _cts.Token));
 
         }
         return Task.WhenAll(waitTasks);
@@ -78,7 +78,7 @@ public class ReactionClassContainer<T> : IReactionClassContainer<T>
 
         Dictionary<string, AsyncHandler> handlerMap = handlers.ToDictionary(h => _eventSerializer.GetIdentifier(h.TargetType));
 
-        IStreamSubscription subscription = _store.SubscribeToAllStreams(StreamPosition.End);
+        IStreamSubscription subscription = _store.SubscribeToAllStreams(Position.End);
 
         IEnumerable<Type> dependencies = GetProjectionDependencies(instance);
 
@@ -88,7 +88,12 @@ public class ReactionClassContainer<T> : IReactionClassContainer<T>
             {
                 await WaitForDependencies(dependencies, streamEvent.Event.GlobalOrdinal);
 
-                EventMetadata metadata = _eventSerializer.DeserializeMetadata(streamEvent.Event.Data.Metadata);
+                EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Event.Data.Metadata);
+
+                if (metadata is null)
+                {
+                    continue;
+                }
 
                 if (!handlerMap.TryGetValue(metadata.Identifier, out var handler))
                 {

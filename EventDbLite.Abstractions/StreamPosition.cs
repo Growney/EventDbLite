@@ -1,37 +1,25 @@
 ﻿namespace EventDbLite.Abstractions;
 
-public struct StreamPosition
+public readonly struct StreamPosition
 {
-    public static readonly StreamPosition Any = new(ExpectedVersion.Any);
-    public static readonly StreamPosition NoStream = new(ExpectedVersion.NoStream);
-    public static readonly StreamPosition StreamExists = new(ExpectedVersion.StreamExists);
-    public static readonly StreamPosition Beginning = new(ExpectedVersion.Beginning);
-    public static readonly StreamPosition End = new(ExpectedVersion.End);
-    public static StreamPosition WithGlobalVersion(long expectedVersion) => new(expectedVersion);
-    public static StreamPosition WithVersion(long expectedVersion) => new(expectedVersion, false);
+    public ulong Position { get; }
 
-    public long Version { get; }
-    public bool IsGlobal { get; }
-
-    private StreamPosition(long state, bool isGlobal = true)
+    public StreamPosition(ulong position)
     {
-        Version = state;
-        IsGlobal = isGlobal;
+        Position = position;
     }
 
-    public static bool operator ==(StreamPosition left, StreamPosition right) => left.Version == right.Version;
-    public static bool operator !=(StreamPosition left, StreamPosition right) => left.Version != right.Version;
-    public static bool operator !=(long left, StreamPosition right) => left != right.Version;
-    public static bool operator ==(long left, StreamPosition right) => left == right.Version;
-    public static bool operator !=(StreamPosition left, long right) => left.Version != right;
-    public static bool operator ==(StreamPosition left, long right) => left.Version == right;
-    public override bool Equals(object? obj) => obj is StreamPosition state ? Version == state.Version : base.Equals(obj);
-    public override int GetHashCode() => Version.GetHashCode();
-    public bool IsValidUpdateVersion(long currentPosition) => Version switch
-    {
-        ExpectedVersion.Any or ExpectedVersion.NoStream or ExpectedVersion.StreamExists => true,
-        _ => currentPosition == Version
-    };
-    public static implicit operator long(StreamPosition state) => state.Version;
-    public static implicit operator StreamPosition(long version) => WithGlobalVersion(version);
+    public static StreamPosition Start => new(ulong.MinValue);
+    public static StreamPosition End => new(ulong.MaxValue);
+    public static StreamPosition At(ulong position) => new(position);
+
+    public static implicit operator ulong(StreamPosition streamPosition) => streamPosition.Position;
+    public static implicit operator StreamPosition(ulong position) => new(position);
+    public static implicit operator StreamState(StreamPosition streamPosition) => new((long)streamPosition.Position);
+
+    public readonly StreamPosition Next() => new(Position + 1);
+    public readonly ulong Difference(StreamPosition other) => Position - other.Position;
+    public readonly bool IsAfter(StreamPosition other) => Position > other.Position;
+
+    public override string ToString() => Position.ToString();
 }

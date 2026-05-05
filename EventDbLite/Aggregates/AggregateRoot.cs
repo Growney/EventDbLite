@@ -20,8 +20,9 @@ public abstract class AggregateRoot<T> : AggregateRoot
 }
 public abstract class AggregateRoot
 {
-    public long Version { get; private set; } = StreamPosition.NoStream;
-    public long CommitedVersion { get; private set; } = StreamPosition.NoStream;
+    public virtual StreamPosition AppliedPosition { get; private set; }
+    public StreamPosition SnapshotPosition { get; private set; }
+    public StreamState CommittedPosition { get; private set; } = StreamState.NoStream;
 
     private IHandlerProvider? _handlerProvider;
     private IEventSerializer? _eventSerializer;
@@ -72,8 +73,8 @@ public abstract class AggregateRoot
             throw new InvalidOperationException($"Failed to deserialize event metadata for event with stream ordinal '{streamEvent.StreamOrdinal}'");
         }
 
-        Version = streamEvent.StreamOrdinal;
-        CommitedVersion = streamEvent.StreamOrdinal;
+        AppliedPosition = streamEvent.StreamOrdinal;
+        CommittedPosition = streamEvent.StreamOrdinal;
         Handler? handler = _handlerProvider.GetHandlerMethod(GetType(), metadata.Identifier);
         if (handler is null)
         {
@@ -92,7 +93,7 @@ public abstract class AggregateRoot
             return;
         }
 
-        Version++;
+        AppliedPosition = AppliedPosition.Next();
         EventMetadata metadata = _eventSerializer.CreateMetadata(payload);
 
         byte[] metadataPayload = _eventSerializer.SerializeMetadata(metadata);

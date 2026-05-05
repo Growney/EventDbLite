@@ -28,6 +28,6 @@ public class StreamEventWriter(IEventSerializer eventSerializer, IEventStoreLite
             eventData.Add(data);
         }
 
-        await _connection.AppendToStreamAsync(streamName, eventData, StreamPosition.Any);
+        await _connection.AppendToStreamAsync(streamName, eventData, StreamState.Any);
     }
 }

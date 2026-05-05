@@ -26,6 +26,6 @@ public class ReactionProviderFactory : IReactionProviderFactory
     private IAsyncEnumerable<ReactionEvent<TEvent>> CreateProvider<TEvent>(StreamPosition initialPosition, IEnumerable<Type> requirements, string? streamName = null)
     {
         ILogger<ReactionProvider<TEvent>> logger = _loggerProvider.CreateLogger<ReactionProvider<TEvent>>();    
-        return new ReactionProvider<TEvent>(_eventStore, _eventSerializer, requirements, _repository, initialPosition,logger, streamName);
+        return new ReactionProvider<TEvent>(_eventSerializer, requirements, _repository, logger, _eventStore, streamName, initialPosition);
     }
 }

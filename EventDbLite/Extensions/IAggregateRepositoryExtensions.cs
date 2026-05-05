@@ -10,7 +10,7 @@ public static class IAggregateRepositoryExtensions
     }
     public static Task Save<AggregateType, KeyType>(this IAggregateRepository repository, AggregateType aggregateRoot) where AggregateType : AggregateRoot<KeyType>
     {
-        return repository.Save(aggregateRoot, AggregateStreamNameProvider.GetStreamName<AggregateType, KeyType>(aggregateRoot.Id ?? throw new ArgumentException("Aggregate ID Not Set")), StreamPosition.WithVersion(aggregateRoot.CommitedVersion));
+        return repository.Save(aggregateRoot, AggregateStreamNameProvider.GetStreamName<AggregateType, KeyType>(aggregateRoot.Id ?? throw new ArgumentException("Aggregate ID Not Set")), aggregateRoot.CommittedPosition);
     }
     public static Task Save<AggregateType, KeyType>(this IAggregateRepository repository, AggregateType aggregateRoot, StreamPosition expectedPosition) where AggregateType : AggregateRoot<KeyType>
     {
@@ -22,10 +22,10 @@ public static class IAggregateRepositoryExtensions
     }
     public static Task Save<AggregateType>(this IAggregateRepository repository, AggregateType aggregateRoot) where AggregateType : AggregateRoot<Guid>
     {
-        return repository.Save<AggregateType, Guid>(aggregateRoot, StreamPosition.WithVersion(aggregateRoot.CommitedVersion));
+        return repository.Save<AggregateType, Guid>(aggregateRoot);
     }
     public static Task Save<AggregateType>(this IAggregateRepository repository, AggregateType aggregateRoot, string streamName) where AggregateType : AggregateRoot
     {
-        return repository.Save<AggregateType>(aggregateRoot, streamName, StreamPosition.WithVersion(aggregateRoot.CommitedVersion));
+        return repository.Save<AggregateType>(aggregateRoot, streamName, aggregateRoot.CommittedPosition);
     }
 }

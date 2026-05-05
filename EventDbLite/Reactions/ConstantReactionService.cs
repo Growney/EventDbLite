@@ -60,7 +60,7 @@ public class ConstantReactionService : IHostedService
         IEventStoreLite store = scope.ServiceProvider.GetRequiredService<IEventStoreLite>();
 
         IConstantReactionPositionStorage positionStorage = scope.ServiceProvider.GetRequiredKeyedService<IConstantReactionPositionStorage>(storageKey);
-        StreamPosition position = await positionStorage.GetPositionAsync(reactionKey) ?? StreamPosition.Beginning;
+        Position position = await positionStorage.GetPositionAsync(reactionKey) ?? Position.Start;
 
         IStreamSubscription subscription = store.SubscribeToAllStreams(position);
 

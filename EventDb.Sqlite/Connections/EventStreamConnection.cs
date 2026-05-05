@@ -13,7 +13,7 @@ internal class EventStreamConnection(ISqliteConnectionFactory connectionFactory)
     private readonly ISqliteConnectionFactory _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
 
     private readonly SemaphoreSlim _semaphore = new(1, 1);
-    public async Task<IEnumerable<StreamEvent>> AppendToStreamAsync(string streamName, IEnumerable<EventData> data, StreamPosition expectedState)
+    public async Task<IEnumerable<StreamEvent>> AppendToStreamAsync(string streamName, IEnumerable<EventData> data, StreamState expectedState)
     {
         await _semaphore.WaitAsync();
         try
@@ -24,42 +24,40 @@ internal class EventStreamConnection(ISqliteConnectionFactory connectionFactory)
 
             SqliteTransaction transaction = sqliteConnection.BeginTransaction(deferred: true);
 
-            if (expectedState == StreamPosition.NoStream || expectedState == StreamPosition.StreamExists)
-            {
-                using (SqliteCommand checkNoStreamCommand = sqliteConnection.CreateCommand())
-                {
-                    checkNoStreamCommand.CommandText =
-                        @"SELECT COUNT(1)
-                        FROM PersistedEvents
-                        WHERE StreamName = $streamName;";
-                    checkNoStreamCommand.Parameters.AddWithValue("$streamName", streamName);
+            StreamPosition? currentStreamVersion = null;
 
-                    long existingCount = (long)checkNoStreamCommand.ExecuteScalar()!;
-
-                    if (expectedState == StreamPosition.NoStream && existingCount > 0)
-                    {
-                        throw new ConcurrencyException(StreamPosition.NoStream, StreamPosition.StreamExists);
-                    }
-                    else if (expectedState == StreamPosition.StreamExists && existingCount == 0)
-                    {
-                        throw new ConcurrencyException(StreamPosition.StreamExists, StreamPosition.NoStream);
-                    }
-                }
-            }
-            long currentStreamVersion = 0;
-            using (SqliteCommand currentStreamVersionCommand = sqliteConnection.CreateCommand())
+            using (SqliteCommand checkNoStreamCommand = sqliteConnection.CreateCommand())
             {
-                currentStreamVersionCommand.CommandText =
-                    @"SELECT IFNULL(MAX(StreamOrdinal), 0)
+                checkNoStreamCommand.CommandText =
+                    @"SELECT MAX(StreamOrdinal)
                     FROM PersistedEvents
                     WHERE StreamName = $streamName;";
-                currentStreamVersionCommand.Parameters.AddWithValue("$streamName", streamName);
-                currentStreamVersion = (long)currentStreamVersionCommand.ExecuteScalar()!;
-                if (!expectedState.IsValidUpdateVersion(currentStreamVersion))
+                checkNoStreamCommand.Parameters.AddWithValue("$streamName", streamName);
+
+                object? result = checkNoStreamCommand.ExecuteScalar();
+
+                if(result != null && result != DBNull.Value)
                 {
-                    throw new ConcurrencyException(expectedState.Version, currentStreamVersion);
+                    currentStreamVersion = new((ulong)(long)result);
+                } 
+
+                if (expectedState == StreamState.NoStream)
+                {
+                    if(currentStreamVersion.HasValue)
+                        throw new ConcurrencyException(StreamState.NoStream, currentStreamVersion.Value);
+                }
+                else if (expectedState == StreamState.StreamExists)
+                {
+                    if(currentStreamVersion == 0)
+                        throw new ConcurrencyException(StreamState.StreamExists, currentStreamVersion.Value);
+                }
+                else if (expectedState != StreamState.Any)
+                {
+                    if(expectedState != currentStreamVersion)
+                        throw new ConcurrencyException(expectedState, currentStreamVersion ?? StreamPosition.Start);
                 }
             }
+            
 
             using (SqliteCommand writeCommand = sqliteConnection.CreateCommand())
             {
@@ -76,9 +74,12 @@ internal class EventStreamConnection(ISqliteConnectionFactory connectionFactory)
                 List<StreamEvent> createdEvents = new();
                 foreach (var eventData in data)
                 {
+                    //If we are not at the start of the stream we want to increment the stream version before.
+                    currentStreamVersion = currentStreamVersion?.Next() ?? StreamPosition.Start;
+
                     idParam.Value = Guid.NewGuid().ToString();
                     streamNameParam.Value = streamName;
-                    streamOrdinalParam.Value = ++currentStreamVersion;
+                    streamOrdinalParam.Value = currentStreamVersion.Value.Position;
                     payloadParam.Value = eventData.Payload;
                     metadataParam.Value = eventData.Metadata;
                     identifierParam.Value = eventData.Identifier;
@@ -93,10 +94,11 @@ internal class EventStreamConnection(ISqliteConnectionFactory connectionFactory)
                     createdEvents.Add(new StreamEvent(
                         Guid.Parse(idParam.Value.ToString()!),
                         streamName,
-                        (long)streamOrdinalParam.Value,
-                        globalId,
+                        currentStreamVersion.Value,
+                        new Position((ulong)globalId, (ulong)globalId),
                         new EventData((byte[])payloadParam.Value, (byte[])metadataParam.Value, identifierParam.Value.ToString()!)
                     ));
+                    
                 }
                 transaction.Commit();
                 return createdEvents;
@@ -106,10 +108,10 @@ internal class EventStreamConnection(ISqliteConnectionFactory connectionFactory)
         {
             _semaphore.Release();
         }
-        
+
     }
-    public async Task<StreamEvent> AppendToStreamAsync(string streamName, EventData data, StreamPosition expectedState) => (await AppendToStreamAsync(streamName, Enumerable.Repeat(data, 1), expectedState)).First();
-    public async IAsyncEnumerable<StreamEvent> ReadAllStreamEvents(StreamDirection direction, StreamPosition position)
+    public async Task<StreamEvent> AppendToStreamAsync(string streamName, EventData data, StreamState expectedState) => (await AppendToStreamAsync(streamName, Enumerable.Repeat(data, 1), expectedState)).First();
+    public async IAsyncEnumerable<StreamEvent> ReadAllStreamEvents(StreamDirection direction, Position position)
     {
         //This feels wrong, using it to allow the use of IasyncEnumerable on a clearly synchronous method
         //Lets see how it get on
@@ -130,7 +132,8 @@ internal class EventStreamConnection(ISqliteConnectionFactory connectionFactory)
               ORDER BY GlobalOrdinal " + (direction == StreamDirection.Forward ? "ASC" : "DESC") + ";";
 
             command.Parameters.AddWithValue("$direction", direction == StreamDirection.Forward ? 0 : 1);
-            command.Parameters.AddWithValue("$position", position.Version);
+            //We must truncate the max value to long max else SQLLite wont understand it
+            command.Parameters.AddWithValue("$position", Math.Min(position.CommitPosition, long.MaxValue));
 
 
             SqliteDataReader reader = command.ExecuteReader();
@@ -140,8 +143,8 @@ internal class EventStreamConnection(ISqliteConnectionFactory connectionFactory)
                 yield return new StreamEvent(
                     reader.GetGuid(0),
                     reader.GetString(1),
-                    reader.GetInt64(2),
-                    reader.GetInt64(3),
+                    new StreamPosition((ulong)reader.GetInt64(2)),
+                    new Position((ulong)reader.GetInt64(3), (ulong)reader.GetInt64(3)),
                     new EventData(
                         (byte[])reader["Payload"],
                         (byte[])reader["Metadata"],
@@ -177,12 +180,13 @@ internal class EventStreamConnection(ISqliteConnectionFactory connectionFactory)
             @"SELECT Id, StreamName, StreamOrdinal, GlobalOrdinal, Payload, Metadata, Identifier
               FROM PersistedEvents
               WHERE StreamName = $streamName
-              AND (( $direction = 0 AND StreamOrdinal > $position ) OR ( $direction = 1 AND StreamOrdinal < $position ))
+              AND (( $direction = 0 AND StreamOrdinal >= $position ) OR ( $direction = 1 AND StreamOrdinal <= $position ))
               ORDER BY StreamOrdinal " + (direction == StreamDirection.Forward ? "ASC" : "DESC") + ";";
 
             command.Parameters.AddWithValue("$streamName", streamName);
             command.Parameters.AddWithValue("$direction", direction == StreamDirection.Forward ? 0 : 1);
-            command.Parameters.AddWithValue("$position", position.Version);
+            //We must truncate the max value to long max else SQLLite wont understand it
+            command.Parameters.AddWithValue("$position", Math.Min(position.Position, long.MaxValue));
 
             SqliteDataReader reader = command.ExecuteReader();
 
@@ -191,8 +195,8 @@ internal class EventStreamConnection(ISqliteConnectionFactory connectionFactory)
                 yield return new StreamEvent(
                     reader.GetGuid(0),
                     reader.GetString(1),
-                    reader.GetInt64(2),
-                    reader.GetInt64(3),
+                    new StreamPosition((ulong)reader.GetInt64(2)),
+                    new Position((ulong)reader.GetInt64(3), (ulong)reader.GetInt64(3)),
                     new EventData(
                         (byte[])reader["Payload"],
                         (byte[])reader["Metadata"],

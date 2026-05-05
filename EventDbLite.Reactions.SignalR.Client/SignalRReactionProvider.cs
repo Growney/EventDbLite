@@ -7,7 +7,9 @@ namespace EventDbLite.Reactions.SignalR.Client;
 public class SignalRReactionProvider<TEvent> : IAsyncEnumerable<ReactionEvent<TEvent>>
 {
     private readonly string? _streamName;
-    private readonly StreamPosition _initialPosition;
+    private readonly StreamPosition? _initialStreamPosition;
+    private readonly Position? _initialPosition;
+
     private readonly IEventSerializer _eventSerializer;
     private readonly IHttpClientFactory _reactionClientFactory;
     private readonly IEventClient _eventClient;
@@ -15,6 +17,14 @@ public class SignalRReactionProvider<TEvent> : IAsyncEnumerable<ReactionEvent<TE
     public SignalRReactionProvider(string? streamName, StreamPosition initialPosition, IEventSerializer eventSerializer, IHttpClientFactory reactionClientFactory, IEventClient eventClient)
     {
         _streamName = streamName;
+        _initialStreamPosition = initialPosition;
+        _eventSerializer = eventSerializer ?? throw new ArgumentNullException(nameof(eventSerializer));
+        _reactionClientFactory = reactionClientFactory ?? throw new ArgumentNullException(nameof(reactionClientFactory));
+        _eventClient = eventClient ?? throw new ArgumentNullException(nameof(eventClient));
+    }
+
+    public SignalRReactionProvider(Position initialPosition, IEventSerializer eventSerializer, IHttpClientFactory reactionClientFactory, IEventClient eventClient)
+    {
         _initialPosition = initialPosition;
         _eventSerializer = eventSerializer ?? throw new ArgumentNullException(nameof(eventSerializer));
         _reactionClientFactory = reactionClientFactory ?? throw new ArgumentNullException(nameof(reactionClientFactory));
@@ -29,11 +39,18 @@ public class SignalRReactionProvider<TEvent> : IAsyncEnumerable<ReactionEvent<TE
 
         Task EventReceived(StreamEvent streamEvent)
         {
-            EventMetadata metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
+            EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
+
+            if(metadata == null)
+            {
+                return Task.CompletedTask;
+            }
+
             if (!metadata.Identifier.Equals(identifier))
             {
                 return Task.CompletedTask;
             }
+
             object? eventObject = _eventSerializer.DeserializeEvent(streamEvent.Data.Payload, typeof(TEvent));
             if (eventObject is TEvent tEvent)
             {
@@ -46,15 +63,15 @@ public class SignalRReactionProvider<TEvent> : IAsyncEnumerable<ReactionEvent<TE
 
         _eventClient.OnEventReceived += EventReceived;
 
-        long currentPosition = 0;
+        Position currentPosition = Position.Start;
 
-        if (_initialPosition != StreamPosition.End)
+        if (_initialStreamPosition != StreamPosition.End)
         {
             using HttpClient reactionClient = _reactionClientFactory.CreateClient();
 
             string url = string.IsNullOrWhiteSpace(_streamName)
-                ? $"/events?position={_initialPosition.Version}"
-                : $"/events/{Uri.EscapeDataString(_streamName)}?position={_initialPosition.Version}";
+                ? $"/events?commitedPosition={_initialPosition?.CommitPosition ?? Position.End.CommitPosition}&preparePosition={_initialPosition?.PreparePosition ?? Position.End.PreparePosition}"
+                : $"/events/{Uri.EscapeDataString(_streamName)}?position={_initialStreamPosition?.Position ?? StreamPosition.End.Position}";
 
             HttpRequestMessage request = new(HttpMethod.Get, "/events");
 
@@ -97,7 +114,7 @@ public class SignalRReactionProvider<TEvent> : IAsyncEnumerable<ReactionEvent<TE
                 continue;
             }
 
-            if (reactionEvent.SubscriptionEvent.Event.GlobalOrdinal <= currentPosition)
+            if (!currentPosition.IsAfter(reactionEvent.SubscriptionEvent.Event.GlobalOrdinal))
             {
                 continue;
             }

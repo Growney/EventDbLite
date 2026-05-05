@@ -21,13 +21,18 @@ public class EventDbLiteConstantReactionPositionStorage : IConstantReactionPosit
     }
 
     private static string GetStreamName(string reactionKey) => $"$reactions-{reactionKey}";
-    public async Task<StreamPosition?> GetPositionAsync(string reactionKey)
+    public async Task<Position?> GetPositionAsync(string reactionKey)
     {
         string reactionEventIdentifier = _eventSerializer.GetIdentifier(typeof(ReactionHandled));
 
         await foreach (StreamEvent streamEvent in _store.ReadStreamEvents(GetStreamName(reactionKey), StreamDirection.Reverse, StreamPosition.End))
         {
-            EventMetadata metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
+            EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
+
+            if(metadata is null)
+            {
+                continue;
+            }
 
             if (metadata.Identifier != reactionEventIdentifier)
             {
@@ -41,17 +46,18 @@ public class EventDbLiteConstantReactionPositionStorage : IConstantReactionPosit
                 continue;
             }
 
-            return StreamPosition.WithGlobalVersion(handled.GlobalOrdinal);
+            return new Position(handled.CommitPosition, handled.PreparePosition);
         }
 
-        return StreamPosition.Beginning;
+        return Position.Start;
     }
 
-    public Task SetPositionAsync(string reactionKey, long globalPosition)
+    public Task SetPositionAsync(string reactionKey, Position position)
     {
         ReactionHandled handledEvent = new()
         {
-            GlobalOrdinal = globalPosition,
+            CommitPosition = position.CommitPosition,
+            PreparePosition = position.PreparePosition,
         };
 
         return _writer.AppendToStream(GetStreamName(reactionKey), handledEvent);

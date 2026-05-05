@@ -20,18 +20,19 @@ internal class LiveProjectionManager : IAsyncDisposable, ILiveProjectionManager
 
     private class VersionWaiter
     {
-        public long GlobalPosition { get; }
+        public Position GlobalPosition { get; }
         public TaskCompletionSource CompletionSource { get; }
-        public VersionWaiter(long globalPosition)
+        public VersionWaiter(Position globalPosition)
         {
             GlobalPosition = globalPosition;
             CompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
     }
 
-    private long _currentGlobalPosition = -1;
+    private Position _currentGlobalPosition = Position.Start;
 
-    private ConcurrentBag<VersionWaiter> _waitingTasks = new();
+    private readonly object _waitingTasksLock = new();
+    private List<VersionWaiter> _waitingTasks = new();
     public LiveProjectionManager(IServiceProvider serviceProvider, IEventSerializer serializer, IAsyncHandlerProvider asyncHandlerProvider, IEventStoreLite eventStore, LiveProjectionRequirement requirement)
     {
         _requirement = requirement ?? throw new ArgumentNullException(nameof(requirement));
@@ -46,45 +47,58 @@ internal class LiveProjectionManager : IAsyncDisposable, ILiveProjectionManager
         using IServiceScope initialScope = _serviceProvider.CreateScope();
         IEventSerializer eventSerializer = initialScope.ServiceProvider.GetRequiredService<IEventSerializer>();
 
-        //Later if there is a requirement we can load the projection position using reflection
-        StreamPosition initialPosition = StreamPosition.Beginning;
-
         IStreamSubscription subscription = _requirement.Stream is not null
-            ? _eventStore.SubscribeToStream(_requirement.Stream, initialPosition)
-            : _eventStore.SubscribeToAllStreams(initialPosition);
+            ? _eventStore.SubscribeToStream(_requirement.Stream, StreamPosition.Start)
+            : _eventStore.SubscribeToAllStreams(Position.Start);
 
         _cancellationTokenSource?.Cancel();
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
         await foreach (SubscriptionEvent nextEvent in subscription.CatchUp(_cancellationTokenSource.Token))
         {
             await RaiseProjectionEvent(nextEvent);
-            NotifyWaitingTasks(nextEvent.Event.GlobalOrdinal);
+            _currentGlobalPosition = nextEvent.Event.GlobalOrdinal;
+            NotifyWaitingTasks(_currentGlobalPosition);
         }
 
         _continueTask = ContinueMonitoring(subscription, _cancellationTokenSource.Token);
     }
 
-    public Task WaitForVersion(long globalPosition, CancellationToken cancellationToken)
+    public Task WaitForVersion(Position globalPosition, CancellationToken cancellationToken)
     {
-        if (_currentGlobalPosition >= globalPosition)
+        if (!globalPosition.IsAfter(_currentGlobalPosition))
         {
             return Task.CompletedTask;
         }
 
         VersionWaiter waiter = new(globalPosition);
-        _waitingTasks.Add(waiter);
+        lock (_waitingTasksLock)
+        {
+            if (!globalPosition.IsAfter(_currentGlobalPosition))
+            {
+                return Task.CompletedTask;
+            }
+            _waitingTasks.Add(waiter);
+        }
         cancellationToken.Register(() => waiter.CompletionSource.TrySetCanceled(cancellationToken));
         return waiter.CompletionSource.Task;
     }
-    private void NotifyWaitingTasks(long globalPosition)
+    private void NotifyWaitingTasks(Position globalPosition)
     {
-        foreach (VersionWaiter waiter in _waitingTasks)
+        lock (_waitingTasksLock)
         {
-            if (waiter.GlobalPosition <= globalPosition)
+            List<VersionWaiter> remaining = new();
+            foreach (VersionWaiter waiter in _waitingTasks)
             {
-                waiter.CompletionSource.TrySetResult();
-                _waitingTasks.TryTake(out _);
+                if (!waiter.GlobalPosition.IsAfter(globalPosition))
+                {
+                    waiter.CompletionSource.TrySetResult();
+                }
+                else
+                {
+                    remaining.Add(waiter);
+                }
             }
+            _waitingTasks = remaining;
         }
     }
     private async Task ContinueMonitoring(IStreamSubscription subscription, CancellationToken token)
@@ -98,7 +112,7 @@ internal class LiveProjectionManager : IAsyncDisposable, ILiveProjectionManager
     }
     private async Task RaiseProjectionEvent(SubscriptionEvent subscriptionEvent)
     {
-        EventMetadata metadata = _serializer.DeserializeMetadata(subscriptionEvent.Event.Data.Metadata);
+        EventMetadata? metadata = _serializer.DeserializeMetadata(subscriptionEvent.Event.Data.Metadata);
         using IServiceScope scope = _serviceProvider.CreateScope();
         object? projection = ActivatorUtilities.GetServiceOrCreateInstance(scope.ServiceProvider, _requirement.ProjectionType);
         AsyncHandler? handler = _asyncHandlerProvider.GetHandlerMethod(projection.GetType(), metadata.Identifier);

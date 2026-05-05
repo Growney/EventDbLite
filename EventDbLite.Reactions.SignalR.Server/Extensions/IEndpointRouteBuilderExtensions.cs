@@ -11,9 +11,9 @@ public static class IEndpointRouteBuilderExtensions
     {
         builder.MapHub<EventsHub>("/eventDbLiteHub");
 
-        builder.MapGet("/events", async (HttpContext context, IEventStoreLite eventStore, long? position) =>
+        builder.MapGet("/events", async (HttpContext context, IEventStoreLite eventStore, ulong commitPosition, ulong preparePosition) =>
         {
-            StreamPosition streamPosition = position.HasValue ? StreamPosition.WithVersion(position.Value) : StreamPosition.Beginning;
+            Position streamPosition = new (commitPosition, preparePosition);
 
             List<StreamEvent> events = new();
 
@@ -25,9 +25,9 @@ public static class IEndpointRouteBuilderExtensions
             return Results.Ok(events);
         });
 
-        builder.MapGet("/events/{streamName}", async (HttpContext context, IEventStoreLite eventStore, string streamName, long? position) =>
+        builder.MapGet("/events/{streamName}", async (HttpContext context, IEventStoreLite eventStore, string streamName, ulong position) =>
         {
-            StreamPosition streamPosition = position.HasValue ? StreamPosition.WithVersion(position.Value) : StreamPosition.Beginning;
+            StreamPosition streamPosition = new (position);
             List<StreamEvent> events = new();
             await foreach (var streamEvent in eventStore.ReadStreamEvents(streamName, EventDbLite.Streams.StreamDirection.Forward, streamPosition))
             {

@@ -14,7 +14,7 @@ public class AggregateRepository(IEventStoreLite connection, IEventSerializer ev
 
     public async Task<AggregateType?> Get<AggregateType>(string streamName) where AggregateType : AggregateRoot, new()
     {
-        IAsyncEnumerable<StreamEvent> streamEvents = _connection.ReadStreamEvents(streamName, StreamDirection.Forward, StreamPosition.Beginning);
+        IAsyncEnumerable<StreamEvent> streamEvents = _connection.ReadStreamEvents(streamName, StreamDirection.Forward, StreamPosition.Start);
 
         AggregateType? aggregateRoot = null;
 
@@ -31,11 +31,11 @@ public class AggregateRepository(IEventStoreLite connection, IEventSerializer ev
 
         return aggregateRoot;
     }
-    public Task Save<AggregateType>(AggregateType aggregateRoot, string streamName, StreamPosition expectedPosition) where AggregateType : AggregateRoot
+    public Task Save<AggregateType>(AggregateType aggregateRoot, string streamName, StreamState expectedState) where AggregateType : AggregateRoot
     {
         IEnumerable<EventData> raisedEvents = aggregateRoot.GetEvents();
 
-        return _connection.AppendToStreamAsync(streamName, raisedEvents, expectedPosition);
+        return _connection.AppendToStreamAsync(streamName, raisedEvents, expectedState);
     }
 
     public AggregateType CreateNew<AggregateType>(Func<AggregateType>? constructor) where AggregateType : AggregateRoot, new()
