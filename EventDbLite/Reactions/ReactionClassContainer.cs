@@ -11,18 +11,16 @@ public class ReactionClassContainer<T> : IReactionClassContainer<T>
     private readonly IEventStoreLite _store;
     private readonly IAsyncHandlerProvider _handlerProvider;
     private readonly IEventSerializer _eventSerializer;
-    private readonly ILiveProjectionRepository _projectionRepository;
 
     private readonly CancellationTokenSource _cts = new();
 
     public T Instance { get; }
-    public ReactionClassContainer(T instance, IAsyncHandlerProvider handlerProvider, IEventStoreLite store, IEventSerializer eventSerializer, ILiveProjectionRepository projectionRepository)
+    public ReactionClassContainer(T instance, IAsyncHandlerProvider handlerProvider, IEventStoreLite store, IEventSerializer eventSerializer)
     {
         Instance = instance ?? throw new ArgumentNullException(nameof(instance));
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _handlerProvider = handlerProvider ?? throw new ArgumentNullException(nameof(handlerProvider));
         _eventSerializer = eventSerializer;
-        _projectionRepository = projectionRepository;
 
         _ = ProcessClass(Instance);
     }
@@ -43,30 +41,6 @@ public class ReactionClassContainer<T> : IReactionClassContainer<T>
 
         return result ?? Enumerable.Empty<Type>();
     }
-
-    private Task WaitForDependencies(IEnumerable<Type> dependencies, Position position)
-    {
-        if (dependencies == null || !dependencies.Any())
-        {
-            return Task.CompletedTask;
-        }
-
-        List<Task> waitTasks = new();
-        foreach (Type dependency in dependencies)
-        {
-            ILiveProjectionManager? manager = _projectionRepository.GetManager(dependency);
-
-            if (manager == null)
-            {
-                continue;
-            }
-
-            waitTasks.Add(manager.WaitForVersion(position, _cts.Token));
-
-        }
-        return Task.WhenAll(waitTasks);
-    }
-
     private async Task ProcessClass(T instance)
     {
         if (instance == null)
@@ -86,8 +60,6 @@ public class ReactionClassContainer<T> : IReactionClassContainer<T>
         {
             await foreach (SubscriptionEvent streamEvent in subscription.StreamEvents(_cts.Token))
             {
-                await WaitForDependencies(dependencies, streamEvent.Event.GlobalOrdinal);
-
                 EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Event.Data.Metadata);
 
                 if (metadata is null)

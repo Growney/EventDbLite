@@ -9,14 +9,13 @@ public class LiveProjectionService : IHostedService, IDisposable
     private readonly IServiceScope _serviceScope;
     private readonly List<LiveProjectionManager> _projections = [];
 
-    public LiveProjectionService(IServiceProvider serviceProvider,ILiveProjectionRepository managerRepository, IEnumerable<LiveProjectionRequirement> projections)
+    public LiveProjectionService(IServiceProvider serviceProvider, IEnumerable<LiveProjectionRequirement> projections)
     {
         _serviceScope = serviceProvider.CreateScope();
 
         foreach (LiveProjectionRequirement requirement in projections)
         {
             LiveProjectionManager projectionManager = ActivatorUtilities.CreateInstance<LiveProjectionManager>(_serviceScope.ServiceProvider, requirement);
-            managerRepository.RegisterManager(requirement.ProjectionType, projectionManager);
             _projections.Add(projectionManager);
         }
     }

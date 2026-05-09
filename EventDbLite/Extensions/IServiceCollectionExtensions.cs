@@ -20,7 +20,6 @@ public static class IServiceCollectionExtensions
         services.AddHostedService<ConstantReactionService>();
 
         services.TryAddSingleton<IEventStoreLite, EventStoreLite>();
-        services.TryAddSingleton<ILiveProjectionRepository, LiveProjectionRepository>();
 
         services.TryAddSingleton<IEventSerializer, JsonEventSerializer>();
         services.TryAddSingleton<IHandlerProvider, HandlerProvider>();
@@ -28,6 +27,7 @@ public static class IServiceCollectionExtensions
 
         services.TryAddTransient<IAggregateRepository, AggregateRepository>();
         services.TryAddTransient<IProjectionProvider, ProjectionProvider>();
+        services.TryAddSingleton<ISnapshotRepository, InMemorySnapshopRepository>();
 
         services.TryAddTransient<IStreamEventWriter, StreamEventWriter>();
         services.TryAddTransient<IReactionProviderFactory, ReactionProviderFactory>();

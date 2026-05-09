@@ -60,7 +60,8 @@ public class ConstantReactionService : IHostedService
         IEventStoreLite store = scope.ServiceProvider.GetRequiredService<IEventStoreLite>();
 
         IConstantReactionPositionStorage positionStorage = scope.ServiceProvider.GetRequiredKeyedService<IConstantReactionPositionStorage>(storageKey);
-        Position position = await positionStorage.GetPositionAsync(reactionKey) ?? Position.Start;
+        //The position that is stored is the position of the last event that was successfully reacted to, so we need to start from the next position
+        Position position = (await positionStorage.GetPositionAsync(reactionKey))?.Next() ?? Position.Start;
 
         IStreamSubscription subscription = store.SubscribeToAllStreams(position);
 

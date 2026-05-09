@@ -16,6 +16,8 @@ public class SignalRReactionProviderFactory : IReactionProviderFactory
         _eventClient = eventClient ?? throw new ArgumentNullException(nameof(eventClient));
     }
 
-    public IAsyncEnumerable<ReactionEvent<TEvent>> CreateProvider<TEvent>(StreamPosition initialPosition, string? streamName = null)
+    public IAsyncEnumerable<ReactionEvent<TEvent>> CreateProvider<TEvent>(StreamPosition initialPosition, string streamName)
         => new SignalRReactionProvider<TEvent>(streamName, initialPosition, _eventSerializer, _httpClientFactory, _eventClient);
+    public IAsyncEnumerable<ReactionEvent<TEvent>> CreateProvider<TEvent>(Position initialPosition)
+        => new SignalRReactionProvider<TEvent>(initialPosition, _eventSerializer, _httpClientFactory, _eventClient);
 }

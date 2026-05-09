@@ -2,5 +2,7 @@
 public interface IHandlerProvider
 {
     Handler? GetHandlerMethod(Type handlerType, string identifier);
-    IEnumerable<Handler> GetAllHandlerMethods(Type handlerType);
+
+    SnapshotHandler? GetSnapshotHandler(Type handlerType);
+    Handler? GetRestoreHandler(Type handlerType, string identifier);
 }

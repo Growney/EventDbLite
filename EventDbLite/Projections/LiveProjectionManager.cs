@@ -7,7 +7,7 @@ using System.Collections.Concurrent;
 
 namespace EventDbLite.Projections;
 
-internal class LiveProjectionManager : IAsyncDisposable, ILiveProjectionManager
+internal class LiveProjectionManager : IAsyncDisposable
 {
     private readonly LiveProjectionRequirement _requirement;
     private readonly IEventStoreLite _eventStore;
@@ -63,25 +63,6 @@ internal class LiveProjectionManager : IAsyncDisposable, ILiveProjectionManager
         _continueTask = ContinueMonitoring(subscription, _cancellationTokenSource.Token);
     }
 
-    public Task WaitForVersion(Position globalPosition, CancellationToken cancellationToken)
-    {
-        if (!globalPosition.IsAfter(_currentGlobalPosition))
-        {
-            return Task.CompletedTask;
-        }
-
-        VersionWaiter waiter = new(globalPosition);
-        lock (_waitingTasksLock)
-        {
-            if (!globalPosition.IsAfter(_currentGlobalPosition))
-            {
-                return Task.CompletedTask;
-            }
-            _waitingTasks.Add(waiter);
-        }
-        cancellationToken.Register(() => waiter.CompletionSource.TrySetCanceled(cancellationToken));
-        return waiter.CompletionSource.Task;
-    }
     private void NotifyWaitingTasks(Position globalPosition)
     {
         lock (_waitingTasksLock)

@@ -70,10 +70,10 @@ public class SignalRReactionProvider<TEvent> : IAsyncEnumerable<ReactionEvent<TE
             using HttpClient reactionClient = _reactionClientFactory.CreateClient();
 
             string url = string.IsNullOrWhiteSpace(_streamName)
-                ? $"/events?commitedPosition={_initialPosition?.CommitPosition ?? Position.End.CommitPosition}&preparePosition={_initialPosition?.PreparePosition ?? Position.End.PreparePosition}"
+                ? $"/events?commitPosition={_initialPosition?.CommitPosition ?? Position.End.CommitPosition}&preparePosition={_initialPosition?.PreparePosition ?? Position.End.PreparePosition}"
                 : $"/events/{Uri.EscapeDataString(_streamName)}?position={_initialStreamPosition?.Position ?? StreamPosition.End.Position}";
 
-            HttpRequestMessage request = new(HttpMethod.Get, "/events");
+            HttpRequestMessage request = new(HttpMethod.Get, url);
 
             HttpResponseMessage events = await reactionClient.SendAsync(request, cancellationToken);
 
@@ -114,7 +114,7 @@ public class SignalRReactionProvider<TEvent> : IAsyncEnumerable<ReactionEvent<TE
                 continue;
             }
 
-            if (!currentPosition.IsAfter(reactionEvent.SubscriptionEvent.Event.GlobalOrdinal))
+            if (currentPosition.IsAfter(reactionEvent.SubscriptionEvent.Event.GlobalOrdinal))
             {
                 continue;
             }
