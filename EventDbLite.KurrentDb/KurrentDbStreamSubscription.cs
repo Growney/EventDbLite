@@ -1,4 +1,5 @@
 ﻿using EventDbLite.Abstractions;
+using Google.Protobuf;
 using KurrentDB.Client;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -6,12 +7,12 @@ using System.Threading;
 namespace EventDbLite.KurrentDb;
 public sealed class KurrentDbStreamSubscription : IStreamSubscription
 {
-    private readonly KurrentDBClient.StreamSubscriptionResult _stream;
+    private readonly Func<CancellationToken, KurrentDBClient.StreamSubscriptionResult> _subscriptionDelegate;
     public string? StreamName { get; }
 
-    public KurrentDbStreamSubscription(KurrentDBClient.StreamSubscriptionResult stream, string? streamName)
+    public KurrentDbStreamSubscription(Func<CancellationToken, KurrentDBClient.StreamSubscriptionResult> subscriptionDelegate, string? streamName)
     {
-        _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+        _subscriptionDelegate = subscriptionDelegate ?? throw new ArgumentNullException(nameof(subscriptionDelegate));
         StreamName = streamName;
     }
 
@@ -22,18 +23,32 @@ public sealed class KurrentDbStreamSubscription : IStreamSubscription
 
     public async IAsyncEnumerable<SubscriptionEvent> StreamEvents([EnumeratorCancellation]CancellationToken token)
     {
-        await foreach (ResolvedEvent resolvedEvent in _stream.WithCancellation(token))
+        KurrentDBClient.StreamSubscriptionResult subscriptionResult = _subscriptionDelegate(token);
+
+        await foreach (StreamMessage message in subscriptionResult.Messages.WithCancellation(token))
         {
-            yield return new SubscriptionEvent(true,
-                new(resolvedEvent.Event.EventId.ToGuid(),resolvedEvent.Event.EventStreamId, (long)resolvedEvent.Event.Position.CommitPosition,
-                (long)resolvedEvent.Event.Position.CommitPosition,
-                new Abstractions.EventData(resolvedEvent.Event.Data.ToArray(), resolvedEvent.Event.Metadata.ToArray(), resolvedEvent.Event.EventType)
-                ));
+            switch (message)
+            {
+                case StreamMessage.Event eventMessage:
+                    {
+                        yield return new SubscriptionEvent(true,
+                            new StreamEvent(eventMessage.ResolvedEvent.Event.EventId.ToGuid(),
+                                eventMessage.ResolvedEvent.Event.EventStreamId,
+                                new Abstractions.StreamPosition(eventMessage.ResolvedEvent.Event.EventNumber),
+                                new Abstractions.Position(eventMessage.ResolvedEvent.Event.Position.CommitPosition, eventMessage.ResolvedEvent.Event.Position.PreparePosition),
+                                new Abstractions.EventData(eventMessage.ResolvedEvent.Event.Data.ToArray(),
+                                eventMessage.ResolvedEvent.Event.Metadata.ToArray(),
+                                eventMessage.ResolvedEvent.Event.EventType)
+                            ));
+                        break;
+                    }
+                default:
+                    break;
+            }
         }
     }
 
     public void Dispose()
     {
-        _stream.Dispose();
     }
 }

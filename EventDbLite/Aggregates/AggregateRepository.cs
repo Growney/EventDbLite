@@ -35,6 +35,11 @@ public class AggregateRepository(IEventStoreLite connection, IEventSerializer ev
     {
         IEnumerable<EventData> raisedEvents = aggregateRoot.GetEvents();
 
+        if (!raisedEvents.Any())
+        {
+            return Task.CompletedTask;
+        }
+
         return _connection.AppendToStreamAsync(streamName, raisedEvents, expectedState);
     }
 

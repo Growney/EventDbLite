@@ -45,7 +45,7 @@ public class ConstantReactionService : IHostedService
         List<Task> reactionTasks = new();
         foreach (var kvp in reactionMap)
         {
-            reactionTasks.Add(StreamReactions(kvp.Key.storageKey, kvp.Key.reactionKey, kvp.Value, _cancellationTokenSource.Token));
+            reactionTasks.Add(StreamReactionsAsync(kvp.Key.storageKey, kvp.Key.reactionKey, kvp.Value, _cancellationTokenSource.Token));
         }
 
         _completionTask = Task.WhenAll(reactionTasks);
@@ -53,7 +53,7 @@ public class ConstantReactionService : IHostedService
         return Task.CompletedTask;
     }
 
-    private async Task StreamReactions(string storageKey, string reactionKey, IEnumerable<ConstantReaction> handlers, CancellationToken token)
+    private async Task StreamReactionsAsync(string storageKey, string reactionKey, IEnumerable<ConstantReaction> handlers, CancellationToken token)
     {
         using IServiceScope scope = _serviceProvider.CreateScope();
 
@@ -61,7 +61,7 @@ public class ConstantReactionService : IHostedService
 
         IConstantReactionPositionStorage positionStorage = scope.ServiceProvider.GetRequiredKeyedService<IConstantReactionPositionStorage>(storageKey);
         //The position that is stored is the position of the last event that was successfully reacted to, so we need to start from the next position
-        Position position = (await positionStorage.GetPositionAsync(reactionKey))?.Next() ?? Position.Start;
+        Position position = await positionStorage.GetPositionAsync(reactionKey) ?? Position.Start;
 
         IStreamSubscription subscription = store.SubscribeToAllStreams(position);
 
