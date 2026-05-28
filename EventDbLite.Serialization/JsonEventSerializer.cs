@@ -19,7 +19,14 @@ public class JsonEventSerializer : IEventSerializer
         };
     }
     public object? DeserializeEvent(ReadOnlySpan<byte> payload, Type targetType) => System.Text.Json.JsonSerializer.Deserialize(payload, targetType);
-    public EventMetadata? DeserializeMetadata(ReadOnlySpan<byte> metadata) => System.Text.Json.JsonSerializer.Deserialize<EventMetadata>(metadata);
+    public EventMetadata? DeserializeMetadata(ReadOnlySpan<byte> metadata)
+    {
+        if (metadata.IsEmpty)
+        {
+            return null;
+        }
+        return System.Text.Json.JsonSerializer.Deserialize<EventMetadata>(metadata);
+    }
     public string GetIdentifier(Type eventType)
     {
         EventAttribute? eventAttribute = eventType.GetCustomAttribute<EventAttribute>();
