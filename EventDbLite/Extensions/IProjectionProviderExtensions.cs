@@ -5,7 +5,7 @@ namespace EventDbLite.Abstractions;
 
 public static class IProjectionProviderExtensions
 {
-   
+
     public static Task<TValue> ClonePullReadPushAsync<TValue, TProjection>(this IProjectionProvider service, Func<TProjection, TValue> selector, string streamName) where TProjection : notnull
         => service.ClonePullReadPushAsync(selector, streamName, StreamPosition.End);
     public static async Task<TValue> ClonePullReadPushAsync<TValue, TProjection>(this IProjectionProvider service, Func<TProjection, TValue> selector, string streamName, StreamPosition until) where TProjection : notnull
@@ -33,6 +33,9 @@ public static class IProjectionProviderExtensions
         return result;
     }
 
+    public static Task<AllStreamProjection<TProjection>> CloneAsync<TProjection>(this IProjectionProvider service) where TProjection : notnull => service.CloneAsync<TProjection>(Position.End);
+    public static Task<StreamProjection<TProjection>> CloneAsync<TProjection>(this IProjectionProvider service, string streamName) where TProjection : notnull => service.CloneAsync<TProjection>(streamName, StreamPosition.End);
+
     public static Task<T> LoadAsync<T>(this IProjectionProvider service) where T : notnull
      => service.LoadBetweenAsync<T>(Position.Start, Position.End);
     public static Task<T> LoadAsync<T>(this IProjectionProvider service, Position startPosition) where T : notnull
@@ -43,7 +46,7 @@ public static class IProjectionProviderExtensions
     public static Task<T> LoadAsync<T>(this IProjectionProvider service, string streamName, StreamPosition startPosition) where T : notnull
     => service.LoadBetweenAsync<T>(streamName, startPosition, StreamPosition.End);
 
-    public static Task<T> LoadUntilAsync<T>(this IProjectionProvider service,Position endPosition) where T : notnull
+    public static Task<T> LoadUntilAsync<T>(this IProjectionProvider service, Position endPosition) where T : notnull
     => service.LoadBetweenAsync<T>(Position.Start, endPosition);
     public static Task<T> LoadUntilAsync<T>(this IProjectionProvider service, string streamName, StreamPosition endPosition) where T : notnull
     => service.LoadBetweenAsync<T>(streamName, StreamPosition.Start, endPosition);
@@ -63,7 +66,7 @@ public static class IProjectionProviderExtensions
     {
         T instance = service.CreateInstance<T>();
 
-        AllStreamProjection<T> projection = AllStreamProjection<T>.Between(instance,  startPosition, endPosition);
+        AllStreamProjection<T> projection = AllStreamProjection<T>.Between(instance, startPosition, endPosition);
 
         PulledAllStreamProjection<T> pulled = await service.PullAsync<T>(projection);
 
