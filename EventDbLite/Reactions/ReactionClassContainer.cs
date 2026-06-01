@@ -58,7 +58,7 @@ public class ReactionClassContainer<T> : IReactionClassContainer<T>
 
         try
         {
-            await foreach (SubscriptionEvent streamEvent in subscription.StreamEvents(_cts.Token))
+            await foreach (SubscriptionEvent streamEvent in subscription.Messages(_cts.Token))
             {
                 EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Event.Data.Metadata);
 

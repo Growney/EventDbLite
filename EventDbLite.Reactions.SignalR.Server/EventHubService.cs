@@ -31,7 +31,7 @@ public class EventHubService : BackgroundService
 
         IEventSerializer serializer = scope.ServiceProvider.GetRequiredService<IEventSerializer>();
 
-        await foreach (SubscriptionEvent streamEvent in subscription.StreamEvents(stoppingToken))
+        await foreach (SubscriptionEvent streamEvent in subscription.Messages(stoppingToken))
         {
             _logger.LogInformation("Broadcasting event {Identifier} with GlobalOrdinal {GlobalOrdinal}", streamEvent.Event.Data.Identifier, streamEvent.Event.GlobalOrdinal);
             await _hubContext.Clients.All.SendAsync("ReceiveEvent", streamEvent.Event);

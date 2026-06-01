@@ -53,14 +53,8 @@ internal class LiveProjectionManager : IAsyncDisposable
 
         _cancellationTokenSource?.Cancel();
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
-        await foreach (SubscriptionEvent nextEvent in subscription.CatchUp(_cancellationTokenSource.Token))
-        {
-            await RaiseProjectionEvent(nextEvent);
-            _currentGlobalPosition = nextEvent.Event.GlobalOrdinal;
-            NotifyWaitingTasks(_currentGlobalPosition);
-        }
 
-        _continueTask = ContinueMonitoring(subscription, _cancellationTokenSource.Token);
+        _continueTask = Monitor(subscription, _cancellationTokenSource.Token);
     }
 
     private void NotifyWaitingTasks(Position globalPosition)
@@ -82,18 +76,27 @@ internal class LiveProjectionManager : IAsyncDisposable
             _waitingTasks = remaining;
         }
     }
-    private async Task ContinueMonitoring(IStreamSubscription subscription, CancellationToken token)
+    private async Task Monitor(IStreamSubscription subscription, CancellationToken token)
     {
-        await foreach (SubscriptionEvent nextEvent in subscription.StreamEvents(token))
+        await foreach (SubscriptionMessage nextMessage in subscription.Messages(token))
         {
-            await RaiseProjectionEvent(nextEvent);
-            _currentGlobalPosition = nextEvent.Event.GlobalOrdinal;
+            if(nextMessage is not SubscriptionMessage.Event nextEvent)
+            {
+                continue;
+            }
+            await RaiseProjectionEventAsync(nextEvent.SubscriptionEvent);
+            _currentGlobalPosition = nextEvent.SubscriptionEvent.GlobalOrdinal;
             NotifyWaitingTasks(_currentGlobalPosition);
         }
     }
-    private async Task RaiseProjectionEvent(SubscriptionEvent subscriptionEvent)
+    private async Task RaiseProjectionEventAsync(StreamEvent streamEvent)
     {
-        EventMetadata? metadata = _serializer.DeserializeMetadata(subscriptionEvent.Event.Data.Metadata);
+        EventMetadata? metadata = _serializer.DeserializeMetadata(streamEvent.Data.Metadata);
+        if(metadata is null)
+        {
+            return;
+        }
+
         using IServiceScope scope = _serviceProvider.CreateScope();
         object? projection = ActivatorUtilities.GetServiceOrCreateInstance(scope.ServiceProvider, _requirement.ProjectionType);
         AsyncHandler? handler = _asyncHandlerProvider.GetHandlerMethod(projection.GetType(), metadata.Identifier);
@@ -103,7 +106,7 @@ internal class LiveProjectionManager : IAsyncDisposable
             return;
         }
 
-        object? payload = _serializer.DeserializeEvent(subscriptionEvent.Event.Data.Payload, handler.TargetType)
+        object? payload = _serializer.DeserializeEvent(streamEvent.Data.Payload, handler.TargetType)
             ?? throw new InvalidOperationException($"Failed to deserialize event payload for identifier '{metadata.Identifier}'");
 
         await handler.Action(projection, payload);

@@ -67,16 +67,23 @@ public class ConstantReactionService : IHostedService
 
         IEventSerializer serializer = scope.ServiceProvider.GetRequiredService<IEventSerializer>();
         Dictionary<string, Dictionary<Type, List<ConstantReaction>>> identifiedReactions = GroupReactions(handlers, serializer);
-        await foreach (SubscriptionEvent streamEvent in subscription.StreamEvents(token))
+        await foreach (SubscriptionMessage subscriptionMessage in subscription.Messages(token))
         {
             try
             {
-                if(streamEvent.Event.Data.Metadata.Length == 0)
+                if(subscriptionMessage is not SubscriptionMessage.Event eventMessage)
                 {
                     continue;
                 }
 
-                EventMetadata? metadata = serializer.DeserializeMetadata(streamEvent.Event.Data.Metadata);
+                StreamEvent streamEvent = eventMessage.SubscriptionEvent;
+
+                if(streamEvent.Data.Metadata.Length == 0)
+                {
+                    continue;
+                }
+
+                EventMetadata? metadata = serializer.DeserializeMetadata(streamEvent.Data.Metadata);
 
                 if(metadata is null)
                 {
@@ -91,7 +98,7 @@ public class ConstantReactionService : IHostedService
                 bool handledAny = false;
                 foreach (var kvp in eventHandlers)
                 {
-                    object? eventObject = serializer.DeserializeEvent(streamEvent.Event.Data.Payload, kvp.Key);
+                    object? eventObject = serializer.DeserializeEvent(streamEvent.Data.Payload, kvp.Key);
 
                     if (eventObject is null)
                     {
@@ -115,7 +122,7 @@ public class ConstantReactionService : IHostedService
                 }
                 if (handledAny)
                 {
-                    await positionStorage.SetPositionAsync(reactionKey, streamEvent.Event.GlobalOrdinal);
+                    await positionStorage.SetPositionAsync(reactionKey, streamEvent.GlobalOrdinal);
                 }
             }
             catch(Exception ex)

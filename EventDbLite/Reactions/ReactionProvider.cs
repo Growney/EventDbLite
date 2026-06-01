@@ -39,7 +39,7 @@ public class ReactionProvider<TEvent> : IAsyncEnumerable<ReactionEvent<TEvent>>
 
         try
         {
-            await foreach (SubscriptionEvent streamEvent in subscription.StreamEvents(cancellationToken))
+            await foreach (SubscriptionEvent streamEvent in subscription.Messages(cancellationToken))
             {
                 EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Event.Data.Metadata);
 
