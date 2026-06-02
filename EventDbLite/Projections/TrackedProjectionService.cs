@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Text;
 using static EventDbLite.Abstractions.SubscriptionMessage;
@@ -33,17 +34,14 @@ public class TrackedProjectionService<T> : BackgroundService
 
         IProjectionProvider projectionProvider = scope.ServiceProvider.GetRequiredService<IProjectionProvider>();
 
-        AllStreamProjection<T> cloned = await projectionProvider.CloneAsync<T>();
-
         IEventStoreLite store = scope.ServiceProvider.GetRequiredService<IEventStoreLite>();
 
-        IStreamSubscription subscription = store.SubscribeToAllStreams(cloned.StartPosition);
+        Position startPosition = (await projectionProvider.CloneAsync<T>()).StartPosition;
+        IStreamSubscription subscription = store.SubscribeToAllStreams(startPosition);
 
         bool isCaughtUp = false;
-        long appliedEvents = 0;
         long passedEvents = 0;
-        bool shouldSnapshot = false;
-        Position? currentPosition = null;
+        Queue<(Position eventPosition, Handler handler, object eventObj)> applyQueue = new();
         await foreach (SubscriptionMessage subscriptionMessage in subscription.Messages(stoppingToken))
         {
             try
@@ -52,18 +50,24 @@ public class TrackedProjectionService<T> : BackgroundService
                 {
                     case SubscriptionMessage.Event eventMessage:
                         {
-                            currentPosition = eventMessage.SubscriptionEvent.GlobalOrdinal;
                             passedEvents++;
-                            if (HandleEvent(cloned, eventMessage.SubscriptionEvent))
+                            if (!TryGetEventHandler(eventMessage.SubscriptionEvent, out var handler))
                             {
-                                appliedEvents++;
-                                shouldSnapshot = isCaughtUp;
+                                continue;
                             }
+
+                            object? payload = _eventSerializer.DeserializeEvent(eventMessage.SubscriptionEvent.Data.Payload, handler.TargetType);
+
+                            if(payload == null)
+                            {
+                                continue;
+                            }
+
+                            applyQueue.Enqueue((eventMessage.SubscriptionEvent.GlobalOrdinal, handler, payload));
                         }
                         break;
                     case SubscriptionMessage.CaughtUp:
                         {
-                            shouldSnapshot = appliedEvents > 0;
                             isCaughtUp = true;
                         }
                         break;
@@ -74,13 +78,33 @@ public class TrackedProjectionService<T> : BackgroundService
                         break;
                 }
 
-                if (shouldSnapshot && currentPosition.HasValue)
+                if (isCaughtUp && applyQueue.Any())
                 {
-                    await PushProjection(projectionProvider, cloned, appliedEvents, passedEvents, currentPosition.Value);
+                    var cloned = await projectionProvider.CloneAsync<T>();
+
+                    long appliedEvents = 0;
+                    Position? currentPosition = null; 
+                    while (applyQueue.TryDequeue(out var eventToBeApplied))
+                    {
+                        currentPosition = eventToBeApplied.eventPosition;
+                        if (!eventToBeApplied.eventPosition.IsAfter(cloned.StartPosition))
+                        {
+                            continue;
+                        }
+
+                        eventToBeApplied.handler.Action(cloned.Object, eventToBeApplied.eventObj);
+                        appliedEvents++;
+                    }
+
+                    if (appliedEvents == 0 || currentPosition is null)
+                    {
+                        continue;
+                    }
+                    PulledAllStreamProjection<T> pulledProjection = new(cloned.Object, cloned.StartPosition, cloned.TargetPosition, appliedEvents, passedEvents, currentPosition.Value);
+
+                    await projectionProvider.PushAsync(pulledProjection);
                     appliedEvents = 0;
                     passedEvents = 0;
-                    shouldSnapshot = false;
-
                 }
 
             }
@@ -90,8 +114,9 @@ public class TrackedProjectionService<T> : BackgroundService
             }
         }
     }
-    private bool HandleEvent(AllStreamProjection<T> cloned, StreamEvent streamEvent)
+    private bool TryGetEventHandler(StreamEvent streamEvent,[NotNullWhen(true)] out Handler? handler)
     {
+        handler = null;
         if (streamEvent.Data.Metadata.Length == 0)
         {
             return false;
@@ -104,22 +129,15 @@ public class TrackedProjectionService<T> : BackgroundService
             return false;
         }
 
-        Handler? handler = _handlerProvider.GetHandlerMethod(cloned.Object.GetType(), metadata.Identifier);
+        handler = _handlerProvider.GetHandlerMethod(typeof(T), metadata.Identifier);
         if (handler is null)
         {
             return false;
         }
-
-        object? payload = _eventSerializer.DeserializeEvent(streamEvent.Data.Payload, handler.TargetType)
-            ?? throw new InvalidOperationException($"Failed to deserialize event payload for identifier '{metadata.Identifier}'");
-
-        handler.Action(cloned.Object, payload);
         return true;
     }
     private static async Task PushProjection(IProjectionProvider projectionProvider, AllStreamProjection<T> cloned, long appliedEvents, long passedEvents, Position position)
     {
-        PulledAllStreamProjection<T> pulledProjection = new(cloned.Object, cloned.StartPosition, cloned.TargetPosition, appliedEvents, passedEvents, position);
-
-        await projectionProvider.PushAsync(pulledProjection);
+        
     }
 }
