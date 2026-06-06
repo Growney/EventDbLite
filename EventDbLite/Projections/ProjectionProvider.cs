@@ -29,7 +29,7 @@ public class ProjectionProvider : IProjectionProvider
 
     private string GetSnapshotKey<T>(string? streamName = null)
     {
-        return $"{typeof(T).FullName}:{streamName ?? "$all"}";
+        return $"{typeof(T).FullName}:{streamName ?? "all"}";
     }
 
     public T CreateInstance<T>() => ActivatorUtilities.GetServiceOrCreateInstance<T>(_serviceProvider);
@@ -41,7 +41,7 @@ public class ProjectionProvider : IProjectionProvider
         T instance = ActivatorUtilities.GetServiceOrCreateInstance<T>(_serviceProvider);
         StreamPosition streamPosition = StreamPosition.Start;
 
-        await foreach (Snapshot snapshot in _snapshotRepository.GetSnapshots(snapshotKey))
+        await foreach (IReadSnapshot snapshot in _snapshotRepository.GetSnapshots(snapshotKey))
         {
             Handler? handler = _handlerProvider.GetRestoreHandler(instance.GetType(), snapshot.Identifier);
 
@@ -55,7 +55,7 @@ public class ProjectionProvider : IProjectionProvider
                 continue;
             }
 
-            object? payload = _eventSerializer.DeserializeEvent(snapshot.Data, handler.TargetType)
+            object? payload = _snapshotRepository.DeserializeSnapshot(snapshot, handler.TargetType)
                 ?? throw new InvalidOperationException($"Failed to deserialize event payload for identifier '{snapshot.Identifier}'");
 
             if (payload == null)
@@ -81,7 +81,7 @@ public class ProjectionProvider : IProjectionProvider
         T instance = ActivatorUtilities.GetServiceOrCreateInstance<T>(_serviceProvider);
         Position position = Position.Start;
 
-        await foreach (Snapshot snapshot in _snapshotRepository.GetSnapshots(snapshotKey))
+        await foreach (IReadSnapshot snapshot in _snapshotRepository.GetSnapshots(snapshotKey))
         {
             Handler? handler = _handlerProvider.GetRestoreHandler(instance.GetType(), snapshot.Identifier);
 
@@ -95,7 +95,7 @@ public class ProjectionProvider : IProjectionProvider
                 continue;
             }
 
-            object? payload = _eventSerializer.DeserializeEvent(snapshot.Data, handler.TargetType)
+            object? payload = _snapshotRepository.DeserializeSnapshot(snapshot, handler.TargetType)
                 ?? throw new InvalidOperationException($"Failed to deserialize event payload for identifier '{snapshot.Identifier}'");
 
             if (payload == null)
@@ -223,11 +223,7 @@ public class ProjectionProvider : IProjectionProvider
         string snapshotKey = GetSnapshotKey<T>(projection.StreamName);
         string identifier = _eventSerializer.GetIdentifier(payload.GetType());
 
-        byte[] data = _eventSerializer.SerializeEvent(payload);
-
-        Snapshot snapshot = new(data, identifier, Position.Start, projection.FinalPosition);
-
-        await _snapshotRepository.StoreSnapshot(snapshotKey, snapshot);
+        await _snapshotRepository.StoreSnapshot(snapshotKey, payload, identifier, Position.Start, projection.FinalPosition);
         _logger.LogInformation("Pushed projection {ProjectionType} on stream '{StreamName}': snapshot saved after {AppliedEvents} applied events at position {Position}", typeof(T).Name, projection.StreamName, projection.AppliedEvents, projection.FinalPosition);
     }
 
@@ -256,11 +252,7 @@ public class ProjectionProvider : IProjectionProvider
         string snapshotKey = GetSnapshotKey<T>();
         string identifier = _eventSerializer.GetIdentifier(payload.GetType());
 
-        byte[] data = _eventSerializer.SerializeEvent(payload);
-
-        Snapshot snapshot = new(data, identifier, projection.FinalPosition, StreamPosition.Start);
-
-        await _snapshotRepository.StoreSnapshot(snapshotKey, snapshot);
+        await _snapshotRepository.StoreSnapshot(snapshotKey, payload, identifier, projection.FinalPosition, StreamPosition.Start);
         _logger.LogInformation("Pushed projection {ProjectionType} on stream '{StreamName}': snapshot saved after {AppliedEvents} applied events at position {Position}", typeof(T).Name, "$all", projection.AppliedEvents, projection.FinalPosition);
     }
 }
