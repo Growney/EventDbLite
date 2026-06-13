@@ -8,23 +8,23 @@ public static class IAggregateRepositoryExtensions
     {
         return repository.Get<AggregateType>(AggregateStreamNameProvider.GetStreamName<AggregateType, KeyType>(key ?? throw new ArgumentException("Aggregate ID Not Set")));
     }
-    public static Task Save<AggregateType, KeyType>(this IAggregateRepository repository, AggregateType aggregateRoot) where AggregateType : AggregateRoot<KeyType>
+    public static Task<int> Save<AggregateType, KeyType>(this IAggregateRepository repository, AggregateType aggregateRoot) where AggregateType : AggregateRoot<KeyType>
     {
         return repository.Save(aggregateRoot, AggregateStreamNameProvider.GetStreamName<AggregateType, KeyType>(aggregateRoot.Id ?? throw new ArgumentException("Aggregate ID Not Set")), aggregateRoot.CommittedPosition);
     }
-    public static Task Save<AggregateType, KeyType>(this IAggregateRepository repository, AggregateType aggregateRoot, StreamPosition expectedPosition) where AggregateType : AggregateRoot<KeyType>
+    public static Task<int> Save<AggregateType, KeyType>(this IAggregateRepository repository, AggregateType aggregateRoot, StreamPosition expectedPosition) where AggregateType : AggregateRoot<KeyType>
     {
         return repository.Save(aggregateRoot, AggregateStreamNameProvider.GetStreamName<AggregateType,KeyType>(aggregateRoot.Id ?? throw new ArgumentException("Aggregate ID Not Set")), expectedPosition);
     }
-    public static Task Save<AggregateType>(this IAggregateRepository repository, AggregateType aggregateRoot, StreamPosition expectedPosition) where AggregateType : AggregateRoot<Guid>
+    public static Task<int> Save<AggregateType>(this IAggregateRepository repository, AggregateType aggregateRoot, StreamPosition expectedPosition) where AggregateType : AggregateRoot<Guid>
     {
         return repository.Save<AggregateType, Guid>(aggregateRoot, expectedPosition);
     }
-    public static Task Save<AggregateType>(this IAggregateRepository repository, AggregateType aggregateRoot) where AggregateType : AggregateRoot<Guid>
+    public static Task<int> Save<AggregateType>(this IAggregateRepository repository, AggregateType aggregateRoot) where AggregateType : AggregateRoot<Guid>
     {
         return repository.Save<AggregateType, Guid>(aggregateRoot);
     }
-    public static Task Save<AggregateType>(this IAggregateRepository repository, AggregateType aggregateRoot, string streamName) where AggregateType : AggregateRoot
+    public static Task<int> Save<AggregateType>(this IAggregateRepository repository, AggregateType aggregateRoot, string streamName) where AggregateType : AggregateRoot
     {
         return repository.Save<AggregateType>(aggregateRoot, streamName, aggregateRoot.CommittedPosition);
     }

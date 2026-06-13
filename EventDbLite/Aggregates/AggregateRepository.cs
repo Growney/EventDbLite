@@ -31,16 +31,18 @@ public class AggregateRepository(IEventStoreLite connection, IEventSerializer ev
 
         return aggregateRoot;
     }
-    public Task Save<AggregateType>(AggregateType aggregateRoot, string streamName, StreamState expectedState) where AggregateType : AggregateRoot
+    public async Task<int> Save<AggregateType>(AggregateType aggregateRoot, string streamName, StreamState expectedState) where AggregateType : AggregateRoot
     {
         IEnumerable<EventData> raisedEvents = aggregateRoot.GetEvents();
 
         if (!raisedEvents.Any())
         {
-            return Task.CompletedTask;
+            return 0;
         }
 
-        return _connection.AppendToStreamAsync(streamName, raisedEvents, expectedState);
+        await _connection.AppendToStreamAsync(streamName, raisedEvents, expectedState);
+
+        return raisedEvents.Count();
     }
 
     public AggregateType CreateNew<AggregateType>(Func<AggregateType>? constructor) where AggregateType : AggregateRoot, new()
