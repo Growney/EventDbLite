@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection.Metadata;
 using System.Runtime.InteropServices;
 using System.Text;
 using static EventDbLite.Abstractions.SubscriptionMessage;
@@ -41,7 +42,7 @@ public class TrackedProjectionService<T> : BackgroundService
 
         bool isCaughtUp = false;
         long passedEvents = 0;
-        Queue<(Position eventPosition, Handler handler, object eventObj)> applyQueue = new();
+        Queue<(Position eventPosition, Handler handler, StreamEvent eventObj)> applyQueue = new();
         await foreach (SubscriptionMessage subscriptionMessage in subscription.Messages(stoppingToken))
         {
             try
@@ -56,14 +57,7 @@ public class TrackedProjectionService<T> : BackgroundService
                                 continue;
                             }
 
-                            object? payload = _eventSerializer.DeserializeEvent(eventMessage.SubscriptionEvent.Data.Payload, handler.TargetType);
-
-                            if(payload == null)
-                            {
-                                continue;
-                            }
-
-                            applyQueue.Enqueue((eventMessage.SubscriptionEvent.GlobalOrdinal, handler, payload));
+                            applyQueue.Enqueue((eventMessage.SubscriptionEvent.GlobalOrdinal, handler, eventMessage.SubscriptionEvent));
                         }
                         break;
                     case SubscriptionMessage.CaughtUp:
@@ -92,7 +86,24 @@ public class TrackedProjectionService<T> : BackgroundService
                             continue;
                         }
 
-                        eventToBeApplied.handler.Action(cloned.Object, eventToBeApplied.eventObj);
+                        object? payload = _eventSerializer.DeserializeEvent(eventToBeApplied.eventObj.Data.Payload, eventToBeApplied.handler.TargetType);
+
+                        if (payload == null)
+                        {
+                            continue;
+                        }
+
+                        if (cloned.Object is ContextProjection contextProjection)
+                        {
+                            EventMetadata? metadata = _eventSerializer.DeserializeMetadata(eventToBeApplied.eventObj.Data.Metadata);
+
+                            if(metadata != null)
+                            {
+                                contextProjection.Metadata = metadata;
+                            }
+                        }
+
+                        eventToBeApplied.handler.Action(cloned.Object, payload);
                         appliedEvents++;
                     }
 

@@ -67,14 +67,7 @@ public class ReactionClassContainer<T> : IReactionClassContainer<T>
 
                 StreamEvent streamEvent = eventMessage.SubscriptionEvent;
 
-                EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
-
-                if (metadata is null)
-                {
-                    continue;
-                }
-
-                if (!handlerMap.TryGetValue(metadata.Identifier, out var handler))
+                if (!handlerMap.TryGetValue(streamEvent.Data.Identifier, out var handler))
                 {
                     continue;
                 }
@@ -84,6 +77,12 @@ public class ReactionClassContainer<T> : IReactionClassContainer<T>
                 if (eventObject is null)
                 {
                     continue;
+                }
+
+                if (instance is ContextProjection context)
+                {
+                    EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
+                    context.Metadata = metadata;
                 }
 
                 await handler.Action(instance, eventObject);

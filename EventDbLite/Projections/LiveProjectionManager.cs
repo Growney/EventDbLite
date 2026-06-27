@@ -91,15 +91,9 @@ internal class LiveProjectionManager : IAsyncDisposable
     }
     private async Task RaiseProjectionEventAsync(StreamEvent streamEvent)
     {
-        EventMetadata? metadata = _serializer.DeserializeMetadata(streamEvent.Data.Metadata);
-        if(metadata is null)
-        {
-            return;
-        }
-
         using IServiceScope scope = _serviceProvider.CreateScope();
         object? projection = ActivatorUtilities.GetServiceOrCreateInstance(scope.ServiceProvider, _requirement.ProjectionType);
-        AsyncHandler? handler = _asyncHandlerProvider.GetHandlerMethod(projection.GetType(), metadata.Identifier);
+        AsyncHandler? handler = _asyncHandlerProvider.GetHandlerMethod(projection.GetType(), streamEvent.Data.Identifier);
 
         if (handler is null)
         {
@@ -107,7 +101,13 @@ internal class LiveProjectionManager : IAsyncDisposable
         }
 
         object? payload = _serializer.DeserializeEvent(streamEvent.Data.Payload, handler.TargetType)
-            ?? throw new InvalidOperationException($"Failed to deserialize event payload for identifier '{metadata.Identifier}'");
+            ?? throw new InvalidOperationException($"Failed to deserialize event payload for identifier '{streamEvent.Data.Identifier}'");
+
+        if (projection is ContextProjection context)
+        {
+            EventMetadata? metadata = _serializer.DeserializeMetadata(streamEvent.Data.Metadata);
+            context.Metadata = metadata;
+        }
 
         await handler.Action(projection, payload);
     }

@@ -4,6 +4,7 @@ using EventDbLite.Handlers.Abstractions;
 using EventDbLite.Streams;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Data;
 using System.Reflection.Metadata;
 
 namespace EventDbLite.Projections;
@@ -130,21 +131,21 @@ public class ProjectionProvider : IProjectionProvider
             }
 
             passedEvents++;
-            EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
 
-            if (metadata is null)
-            {
-                continue;
-            }
-
-            Handler? handler = _handlerProvider.GetHandlerMethod(projection.Object.GetType(), metadata.Identifier);
+            Handler? handler = _handlerProvider.GetHandlerMethod(projection.Object.GetType(), streamEvent.Data.Identifier);
             if (handler is null)
             {
                 continue;
             }
 
             object? payload = _eventSerializer.DeserializeEvent(streamEvent.Data.Payload, handler.TargetType)
-                ?? throw new InvalidOperationException($"Failed to deserialize event payload for identifier '{metadata.Identifier}'");
+                ?? throw new InvalidOperationException($"Failed to deserialize event payload for identifier '{streamEvent.Data.Identifier}'");
+
+            if(projection.Object is ContextProjection context)
+            {
+                EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
+                context.Metadata = metadata;
+            }
 
             handler.Action(projection.Object, payload);
             appliedEvents++;
@@ -172,21 +173,21 @@ public class ProjectionProvider : IProjectionProvider
             }
 
             passedEvents++;
-            EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
 
-            if (metadata is null)
-            {
-                continue;
-            }
-
-            Handler? handler = _handlerProvider.GetHandlerMethod(projection.Object.GetType(), metadata.Identifier);
+            Handler? handler = _handlerProvider.GetHandlerMethod(projection.Object.GetType(), streamEvent.Data.Identifier);
             if (handler is null)
             {
                 continue;
             }
 
             object? payload = _eventSerializer.DeserializeEvent(streamEvent.Data.Payload, handler.TargetType)
-                ?? throw new InvalidOperationException($"Failed to deserialize event payload for identifier '{metadata.Identifier}'");
+                ?? throw new InvalidOperationException($"Failed to deserialize event payload for identifier '{streamEvent.Data.Identifier}'");
+
+            if (projection.Object is ContextProjection context)
+            {
+                EventMetadata? metadata = _eventSerializer.DeserializeMetadata(streamEvent.Data.Metadata);
+                context.Metadata = metadata;
+            }
 
             handler.Action(projection.Object, payload);
             appliedEvents++;
