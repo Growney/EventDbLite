@@ -54,7 +54,7 @@ public class SignalRReactionProvider<TEvent> : IAsyncEnumerable<ReactionEvent<TE
             object? eventObject = _eventSerializer.DeserializeEvent(streamEvent.Data.Payload, typeof(TEvent));
             if (eventObject is TEvent tEvent)
             {
-                ReactionEvent<TEvent> reactionEvent = new(tEvent, new SubscriptionEvent(true, streamEvent));
+                ReactionEvent<TEvent> reactionEvent = new(tEvent, streamEvent);
                 eventQueue.Enqueue(reactionEvent);
             }
 
@@ -101,7 +101,7 @@ public class SignalRReactionProvider<TEvent> : IAsyncEnumerable<ReactionEvent<TE
                 if (eventObject is TEvent tEvent)
                 {
                     currentPosition = streamEvent.GlobalOrdinal;
-                    yield return new ReactionEvent<TEvent>(tEvent, new SubscriptionEvent(false, streamEvent));
+                    yield return new ReactionEvent<TEvent>(tEvent, streamEvent);
                 }
             }
         }
@@ -114,14 +114,14 @@ public class SignalRReactionProvider<TEvent> : IAsyncEnumerable<ReactionEvent<TE
                 continue;
             }
 
-            if (currentPosition.IsAfter(reactionEvent.SubscriptionEvent.Event.GlobalOrdinal))
+            if (currentPosition.IsAfter(reactionEvent.StreamEvent.GlobalOrdinal))
             {
                 continue;
             }
 
             if (reactionEvent != null)
             {
-                Console.WriteLine($"Triggering client event {reactionEvent.SubscriptionEvent.Event.Data.Identifier}");
+                Console.WriteLine($"Triggering client event {reactionEvent.StreamEvent.Data.Identifier}");
                 yield return reactionEvent;
             }
         }

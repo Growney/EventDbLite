@@ -45,7 +45,7 @@ public class ConstantReactionService : IHostedService
         List<Task> reactionTasks = new();
         foreach (var kvp in reactionMap)
         {
-            reactionTasks.Add(StreamReactions(kvp.Key.storageKey, kvp.Key.reactionKey, kvp.Value, _cancellationTokenSource.Token));
+            reactionTasks.Add(StreamReactionsAsync(kvp.Key.storageKey, kvp.Key.reactionKey, kvp.Value, _cancellationTokenSource.Token));
         }
 
         _completionTask = Task.WhenAll(reactionTasks);
@@ -53,7 +53,7 @@ public class ConstantReactionService : IHostedService
         return Task.CompletedTask;
     }
 
-    private async Task StreamReactions(string storageKey, string reactionKey, IEnumerable<ConstantReaction> handlers, CancellationToken token)
+    private async Task StreamReactionsAsync(string storageKey, string reactionKey, IEnumerable<ConstantReaction> handlers, CancellationToken token)
     {
         using IServiceScope scope = _serviceProvider.CreateScope();
 
@@ -61,22 +61,29 @@ public class ConstantReactionService : IHostedService
 
         IConstantReactionPositionStorage positionStorage = scope.ServiceProvider.GetRequiredKeyedService<IConstantReactionPositionStorage>(storageKey);
         //The position that is stored is the position of the last event that was successfully reacted to, so we need to start from the next position
-        Position position = (await positionStorage.GetPositionAsync(reactionKey))?.Next() ?? Position.Start;
+        Position position = await positionStorage.GetPositionAsync(reactionKey) ?? Position.Start;
 
         IStreamSubscription subscription = store.SubscribeToAllStreams(position);
 
         IEventSerializer serializer = scope.ServiceProvider.GetRequiredService<IEventSerializer>();
         Dictionary<string, Dictionary<Type, List<ConstantReaction>>> identifiedReactions = GroupReactions(handlers, serializer);
-        await foreach (SubscriptionEvent streamEvent in subscription.StreamEvents(token))
+        await foreach (SubscriptionMessage subscriptionMessage in subscription.Messages(token))
         {
             try
             {
-                if(streamEvent.Event.Data.Metadata.Length == 0)
+                if(subscriptionMessage is not SubscriptionMessage.Event eventMessage)
                 {
                     continue;
                 }
 
-                EventMetadata? metadata = serializer.DeserializeMetadata(streamEvent.Event.Data.Metadata);
+                StreamEvent streamEvent = eventMessage.SubscriptionEvent;
+
+                if(streamEvent.Data.Metadata.Length == 0)
+                {
+                    continue;
+                }
+
+                EventMetadata? metadata = serializer.DeserializeMetadata(streamEvent.Data.Metadata);
 
                 if(metadata is null)
                 {
@@ -91,7 +98,7 @@ public class ConstantReactionService : IHostedService
                 bool handledAny = false;
                 foreach (var kvp in eventHandlers)
                 {
-                    object? eventObject = serializer.DeserializeEvent(streamEvent.Event.Data.Payload, kvp.Key);
+                    object? eventObject = serializer.DeserializeEvent(streamEvent.Data.Payload, kvp.Key);
 
                     if (eventObject is null)
                     {
@@ -115,7 +122,7 @@ public class ConstantReactionService : IHostedService
                 }
                 if (handledAny)
                 {
-                    await positionStorage.SetPositionAsync(reactionKey, streamEvent.Event.GlobalOrdinal);
+                    await positionStorage.SetPositionAsync(reactionKey, streamEvent.GlobalOrdinal);
                 }
             }
             catch(Exception ex)

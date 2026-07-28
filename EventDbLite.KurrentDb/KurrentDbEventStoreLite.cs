@@ -13,55 +13,54 @@ public class KurrentDbEventStoreLite : IEventStoreLite
         _client = client ?? throw new ArgumentNullException(nameof(client));
     }
 
-    public static StreamState ToKurrentDbState(Abstractions.StreamPosition expectedState)
+    public static KurrentDB.Client.StreamState ToKurrentDbState(Abstractions.StreamState expectedState)
     {
-        if (expectedState == Abstractions.StreamPosition.Any)
+        if (expectedState == Abstractions.StreamState.Any)
         {
-            return StreamState.Any;
+            return KurrentDB.Client.StreamState.Any;
         }
-        if (expectedState == Abstractions.StreamPosition.NoStream)
+        if (expectedState == Abstractions.StreamState.NoStream)
         {
-            return StreamState.NoStream;
+            return KurrentDB.Client.StreamState.NoStream;
         }
-        if (expectedState == Abstractions.StreamPosition.StreamExists)
+        if (expectedState == Abstractions.StreamState.StreamExists)
         {
-            return StreamState.StreamExists;
+            return KurrentDB.Client.StreamState.StreamExists;
         }
-        if (expectedState == Abstractions.StreamPosition.Beginning)
+        if (expectedState == Abstractions.StreamState.Start)
         {
-            return StreamState.StreamExists;
+            return KurrentDB.Client.StreamState.StreamExists;
         }
         if (expectedState == Abstractions.StreamPosition.End)
         {
-            return StreamState.Any;
+            return KurrentDB.Client.StreamState.Any;
         }
         
-        return StreamState.StreamRevision((ulong)expectedState.Version);
+        return KurrentDB.Client.StreamState.StreamRevision(expectedState);
     }
-
-    public Task AppendToStreamAsync(string streamName, IEnumerable<Abstractions.EventData> data, Abstractions.StreamPosition expectedState)
+    public Task AppendToStreamAsync(string streamName, IEnumerable<Abstractions.EventData> data, Abstractions.StreamState expectedState)
     {
-        StreamState kurrentDbState = ToKurrentDbState(expectedState);
+        KurrentDB.Client.StreamState kurrentDbState = ToKurrentDbState(expectedState);
 
-        IEnumerable<KurrentDB.Client.EventData> kurrentDbEvents = data.Select(e => new KurrentDB.Client.EventData(Uuid.NewUuid(), e.Identifier,e.Payload,e.Metadata));
+        IEnumerable<KurrentDB.Client.EventData> kurrentDbEvents = data.Select(e => new KurrentDB.Client.EventData(Uuid.NewUuid(), e.Identifier, e.Payload, e.Metadata));
 
         return _client.AppendToStreamAsync(streamName, kurrentDbState, kurrentDbEvents);
     }
 
-    public async IAsyncEnumerable<StreamEvent> ReadAllEvents(StreamDirection direction, Abstractions.StreamPosition fromPosition)
+    public async IAsyncEnumerable<StreamEvent> ReadAllEvents(StreamDirection direction, Abstractions.Position fromPosition)
     {
         Direction kurrentDbDirection = direction == StreamDirection.Forward ? Direction.Forwards : Direction.Backwards;
 
-        Position kurrentPosition = new((ulong)fromPosition.Version,(ulong)fromPosition.Version);
+        KurrentDB.Client.Position kurrentPosition = new(fromPosition.CommitPosition, fromPosition.PreparePosition);
 
         KurrentDBClient.ReadAllStreamResult streamResult = _client.ReadAllAsync(kurrentDbDirection, kurrentPosition);
 
-        await foreach(ResolvedEvent resolvedEvent in streamResult)
+        await foreach (ResolvedEvent resolvedEvent in streamResult)
         {
             yield return new StreamEvent(resolvedEvent.Event.EventId.ToGuid(),
                 resolvedEvent.Event.EventStreamId,
-                resolvedEvent.OriginalEvent.EventNumber.ToInt64(),
-                (long)resolvedEvent.Event.Position.CommitPosition,
+                new Abstractions.StreamPosition(resolvedEvent.OriginalEvent.EventNumber),
+                new Abstractions.Position(resolvedEvent.Event.Position.CommitPosition, resolvedEvent.Event.Position.PreparePosition),
                 new Abstractions.EventData(resolvedEvent.Event.Data.ToArray(), resolvedEvent.Event.Metadata.ToArray(), resolvedEvent.Event.EventType)
             );
         }
@@ -71,7 +70,7 @@ public class KurrentDbEventStoreLite : IEventStoreLite
     {
         Direction kurrentDbDirection = direction == StreamDirection.Forward ? Direction.Forwards : Direction.Backwards;
 
-        KurrentDB.Client.StreamPosition kurrentPosition = new((ulong)fromPosition.Version);
+        KurrentDB.Client.StreamPosition kurrentPosition = new(fromPosition);
 
         KurrentDBClient.ReadStreamResult streamResult = _client.ReadStreamAsync(kurrentDbDirection,streamName, kurrentPosition);
 
@@ -79,27 +78,24 @@ public class KurrentDbEventStoreLite : IEventStoreLite
         {
             yield return new StreamEvent(resolvedEvent.Event.EventId.ToGuid(),
                 resolvedEvent.Event.EventStreamId,
-                resolvedEvent.OriginalEvent.EventNumber.ToInt64(),
-                (long)resolvedEvent.Event.Position.CommitPosition,
+                new Abstractions.StreamPosition(resolvedEvent.OriginalEvent.EventNumber),
+                new Abstractions.Position(resolvedEvent.Event.Position.CommitPosition, resolvedEvent.Event.Position.PreparePosition),
                 new Abstractions.EventData(resolvedEvent.Event.Data.ToArray(), resolvedEvent.Event.Metadata.ToArray(), resolvedEvent.Event.EventType)
             );
         }
     }
 
-    public IStreamSubscription SubscribeToAllStreams(Abstractions.StreamPosition from)
+    public IStreamSubscription SubscribeToAllStreams(Abstractions.Position from)
     {
-        FromAll kurrentFrom = FromAll.After(new KurrentDB.Client.Position((ulong)from.Version, (ulong)from.Version));
+        FromAll kurrentFrom = FromAll.After(new KurrentDB.Client.Position(from.CommitPosition, from.PreparePosition));
 
-        KurrentDBClient.StreamSubscriptionResult subscriptionResult = _client.SubscribeToAll(kurrentFrom);
-        return new KurrentDbStreamSubscription(subscriptionResult, null);
+        return new KurrentDbStreamSubscription((token) => _client.SubscribeToAll(kurrentFrom, cancellationToken: token), null);
     }
 
     public IStreamSubscription SubscribeToStream(string streamName, Abstractions.StreamPosition from)
     {
-        FromStream kurrentFrom = FromStream.After((ulong)from.Version);
+        FromStream kurrentFrom = FromStream.After(from.Position);
 
-        KurrentDBClient.StreamSubscriptionResult subscriptionResult = _client.SubscribeToStream(streamName, kurrentFrom);
-
-        return new KurrentDbStreamSubscription(subscriptionResult, streamName);
+        return new KurrentDbStreamSubscription((token) => _client.SubscribeToStream(streamName, kurrentFrom, cancellationToken: token), streamName);
     }
 }

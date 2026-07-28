@@ -99,6 +99,8 @@ public static class IServiceCollectionExtensions
         return services;
     }
 
+    public static IServiceCollection AddTrackedAllStreamProjection<TProjection>(this IServiceCollection services) => services.AddHostedService<TrackedProjectionService<TProjection>>();
+
     public static IServiceCollection AddConstantReaction<T>(this IServiceCollection services, Func<IServiceProvider, T, Task> reaction, string storageKey, string? reactionKey = null)
     {
         services.AddSingleton(new ConstantReactionSource([new ConstantReaction((serviceProvider, obj) =>

@@ -46,23 +46,7 @@ internal class StreamSubscription : IStreamSubscription
         _signal.Dispose();
     }
 
-    public async IAsyncEnumerable<SubscriptionEvent> CatchUp([EnumeratorCancellation] CancellationToken token)
-    {
-        Stopwatch stopwatch = Stopwatch.StartNew();
-        _logger?.LogInformation("Starting catch-up from position {Position} on stream {StreamName}", _currentPosition, _streamName ?? "all streams");
-        IAsyncEnumerable<StreamEvent> eventStream = _streamName is not null
-            ? _eventStore.ReadStreamEvents(_streamName, StreamDirection.Forward, _streamPosition ?? StreamPosition.Start)
-            : _eventStore.ReadAllEvents(StreamDirection.Forward, _currentPosition ?? Position.Start);
-        await foreach (StreamEvent streamEvent in eventStream.WithCancellation(token))
-        {
-            yield return new SubscriptionEvent(false, streamEvent);
-            _currentPosition = streamEvent.GlobalOrdinal;
-        }
-        stopwatch.Stop();
-        _logger?.LogInformation("Completed catch-up to position {Position} on stream {StreamName} in {ElapsedMilliseconds} ms", _currentPosition, _streamName ?? "all streams", stopwatch.ElapsedMilliseconds);
-    }
-
-    public async IAsyncEnumerable<SubscriptionEvent> StreamEvents([EnumeratorCancellation] CancellationToken token)
+    public async IAsyncEnumerable<SubscriptionMessage> Messages([EnumeratorCancellation] CancellationToken token)
     {
         IAsyncEnumerable<StreamEvent> eventStream = _streamName is not null
             ? _eventStore.ReadStreamEvents(_streamName, StreamDirection.Forward, _streamPosition ?? StreamPosition.Start)
@@ -70,9 +54,11 @@ internal class StreamSubscription : IStreamSubscription
 
         await foreach (StreamEvent streamEvent in eventStream)
         {
-            yield return new SubscriptionEvent(false, streamEvent);
+            yield return new SubscriptionMessage.Event(streamEvent);
             _currentPosition = streamEvent.GlobalOrdinal;
         }
+
+        yield return new SubscriptionMessage.CaughtUp();
 
         while (!token.IsCancellationRequested)
         {
@@ -98,7 +84,7 @@ internal class StreamSubscription : IStreamSubscription
                 if (_liveQueue.TryDequeue(out StreamEvent? streamEvent))
                 {
                     _logger?.LogTrace("Processing live event {EventId} from stream {StreamName} at position {GlobalOrdinal}", streamEvent.Id, streamEvent.StreamName, streamEvent.GlobalOrdinal);
-                    yield return new SubscriptionEvent(true, streamEvent);
+                    yield return new SubscriptionMessage.Event(streamEvent);
                     _currentPosition = streamEvent.GlobalOrdinal;
                 }
             }

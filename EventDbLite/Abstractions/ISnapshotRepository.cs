@@ -6,6 +6,7 @@ namespace EventDbLite.Abstractions;
 
 public interface ISnapshotRepository
 {
-    IAsyncEnumerable<Snapshot> GetSnapshots(string snapshotKey);
-    Task StoreSnapshot(string snapshotKey, Snapshot snapshot);
+    IAsyncEnumerable<IReadSnapshot> GetSnapshots(string snapshotKey);
+    object? DeserializeSnapshot(IReadSnapshot snapshot, Type targetType);
+    Task StoreSnapshot(string snapshotKey, object data, string identifier, Position position, StreamPosition streamPosition);
 }

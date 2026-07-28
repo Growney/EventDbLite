@@ -1,12 +1,12 @@
 ﻿namespace EventDbLite.Abstractions;
 public class ReactionEvent<T>
 {
-    public ReactionEvent(T payload, SubscriptionEvent subscriptionEvent)
+    public ReactionEvent(T payload, StreamEvent streamEvent)
     {
         Payload = payload ?? throw new ArgumentNullException(nameof(payload));
-        SubscriptionEvent = subscriptionEvent ?? throw new ArgumentNullException(nameof(subscriptionEvent));
+        StreamEvent = streamEvent ?? throw new ArgumentNullException(nameof(streamEvent));
     }
 
     public T Payload { get; }
-    public SubscriptionEvent SubscriptionEvent { get; }
+    public StreamEvent StreamEvent { get; }
 }

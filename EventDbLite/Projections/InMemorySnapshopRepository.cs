@@ -8,32 +8,66 @@ namespace EventDbLite.Projections;
 
 public class InMemorySnapshopRepository : ISnapshotRepository
 {
-    private readonly ConcurrentDictionary<string, Snapshot> _snapshots = new();
-
-    public IAsyncEnumerable<Snapshot> GetSnapshots(string snapshotKey)
+    private class InMemorySnapshot : IReadSnapshot
     {
-        if (_snapshots.TryGetValue(snapshotKey, out Snapshot? snapshot))
+        public required object Data { get; set; }
+        public required string Identifier { get; set; }
+        public required Position Position { get; set; }
+        public required StreamPosition StreamPosition{ get; set; }
+    }
+
+    private readonly ConcurrentDictionary<string, InMemorySnapshot> _snapshots = new();
+
+    public IAsyncEnumerable<IReadSnapshot> GetSnapshots(string snapshotKey)
+    {
+        if (_snapshots.TryGetValue(snapshotKey, out InMemorySnapshot? snapshot))
         {
             return AsyncEnumerable.Repeat(snapshot, 1);
         }
 
-        return AsyncEnumerable.Empty<Snapshot>();
+        return AsyncEnumerable.Empty<IReadSnapshot>();
     }
 
-    public async Task StoreSnapshot(string snapshotKey, Snapshot snapshot)
+    public async Task StoreSnapshot(string snapshotKey, object data, string identifier, Position position, StreamPosition streamPosition)
     {
-        _snapshots.AddOrUpdate(snapshotKey, snapshot, (key, existing) =>
+        _snapshots.AddOrUpdate(snapshotKey, 
+        (key) =>
+        {
+            return new InMemorySnapshot()
             {
-                if (existing.Position.IsAfter(snapshot.Position))
-                {
-                    return existing;
+                Data = data,
+                Identifier = identifier,
+                Position = position,
+                StreamPosition = streamPosition
+            };
+        }, 
+        (key, existing) =>
+        {
+            if (!(existing.Position.IsAfter(position) || existing.StreamPosition.IsAfter(streamPosition)))
+            {
 
-                }
-                else
-                {
-                    return snapshot;
-                }
+                existing.Position = position;
+                existing.Data = data;
+                existing.StreamPosition = streamPosition;
             }
-        );
+            
+
+            return existing;
+        });
+    }
+
+    public object? DeserializeSnapshot(IReadSnapshot snapshot, Type targetType)
+    {
+        if(snapshot is not InMemorySnapshot inMemorySnapshot)
+        {
+            throw new NotSupportedException("Snapshot type not supported by repository");
+        }
+
+        if(inMemorySnapshot.Data.GetType() != targetType)
+        {
+            return null;
+        }
+
+        return inMemorySnapshot.Data;
     }
 }
