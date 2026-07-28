@@ -123,25 +123,25 @@ public static class IServiceCollectionExtensions
         });
         return services;
     }
-    public static IServiceCollection AddConstantReactionService<TService, TImplementation>(this IServiceCollection services)
+    public static IServiceCollection AddConstantReactionService<TService, TImplementation>(this IServiceCollection services, ServiceLifetime lifetime = ServiceLifetime.Singleton)
         where TService : class
         where TImplementation : class, TService
-            => AddConstantReactionService<TService, TImplementation>(services, _defaultstorageKey);
+            => AddConstantReactionService<TService, TImplementation>(services, _defaultstorageKey, lifetime);
 
-    public static IServiceCollection AddConstantReactionService<TService, TImplementation>(this IServiceCollection services, string storageKey)
+    public static IServiceCollection AddConstantReactionService<TService, TImplementation>(this IServiceCollection services, string storageKey, ServiceLifetime lifetime = ServiceLifetime.Singleton)
         where TService : class
         where TImplementation : class, TService
     {
-        services.AddSingleton<TService, TImplementation>();
+        services.TryAdd(new ServiceDescriptor(typeof(TService), typeof(TImplementation), lifetime));
         services.AddConstantReactionClass<TService>(storageKey);
         return services;
     }
 
-    public static IServiceCollection AddConstantReactionService<TService, TImplementation>(this IServiceCollection services, string storageKey, string? reactionKey)
+    public static IServiceCollection AddConstantReactionService<TService, TImplementation>(this IServiceCollection services, string storageKey, string? reactionKey, ServiceLifetime lifetime = ServiceLifetime.Singleton)
         where TService : class
         where TImplementation : class, TService
     {
-        services.TryAddSingleton<TService, TImplementation>();
+        services.TryAdd(new ServiceDescriptor(typeof(TService), typeof(TImplementation), lifetime));
         services.AddConstantReactionClass<TService>(storageKey, reactionKey);
         return services;
     }

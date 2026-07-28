@@ -4,6 +4,19 @@ using Microsoft.Extensions.DependencyInjection;
 namespace EventDbLite.Abstractions;
 public static class IProjectionProviderExtensions
 {
+    public static async Task<PulledProjection<TValue>> CloneOrPull<TValue>(this IProjectionProvider service, PulledProjection<TValue>? pulledProjection) where TValue : notnull
+    {
+        if (pulledProjection is null)
+        {
+            Projection<TValue> projection = await service.CloneAsync<TValue>();
+            PulledProjection<TValue> pulled = await service.PullAsync<TValue>(projection, Position.End);
+            return pulled;
+        }
+        else
+        {
+            return await service.PullAsync<TValue>(pulledProjection, Position.End);
+        }
+    }
     public static Task<TValue> ClonePullReadPushAsync<TValue, TProjection>(this IProjectionProvider service, Func<TProjection, TValue> selector) where TProjection : notnull
         => service.ClonePullReadPushAsync<TValue, TProjection>(selector, null);
     public static async Task<TValue> ClonePullReadPushAsync<TValue, TProjection>(this IProjectionProvider service, Func<TProjection, TValue> selector, string? streamName) where TProjection : notnull
